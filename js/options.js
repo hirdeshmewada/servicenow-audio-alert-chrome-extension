@@ -43,23 +43,24 @@ function save_options() {
     var rooturl = $("#idrooturl").val()
     var secondary = $("#idsecondaryq").val()
     var pollInterval=parseInt($("#pollInterval").val());
-    if(pollInterval<1 || pollInterval==undefined) 
+    if(pollInterval<1 || pollInterval==undefined)
         pollInterval=5;
-    if (isNaN(pollInterval)) 
+    if (isNaN(pollInterval))
         pollInterval=5;
 
 
     
     var saveMe = {
-			'primary': primary,
-			'rooturl': rooturl,
-			'secondary': secondary,
-            'pollInterval':pollInterval,
-      'splitcount' : $("input[name='splitcount']:checked").val(),
-      'disableAlarm' : $("input[name='disableAlarm']:checked").val(),
-      'disablePoll' : $("input[name='disablePoll']:checked").val(),
-      'alarmCondition' : $("input[name='alarmCondition']:checked").val()
-		}
+            primary: primary,
+            rooturl: rooturl,
+            secondary: secondary,
+            pollInterval: pollInterval,
+            splitcount: $("input[name='splitcount']:checked").val(),
+            // Always store an explicit value so toggling works reliably
+            disableAlarm: $("#disableAlarm").is(":checked") ? "on" : "off",
+            disablePoll:  $("#disablePoll").is(":checked") ? "on" : "off",
+            alarmCondition: $("input[name='alarmCondition']:checked").val()
+        }
 
 
     chrome.storage.sync.set(saveMe, function() {
@@ -143,14 +144,9 @@ function restore_options() {
         
         
         
-        if(items.disableAlarm == "on"){
-          $("#disableAlarm").attr("checked", true);
-        }
-        
-        
-        if(items.disablePoll == "on"){
-          $("#disablePoll").attr("checked", true);
-        }
+        // Ensure checkboxes are explicitly set on or off
+        $("#disableAlarm").prop("checked", items.disableAlarm === "on");
+        $("#disablePoll").prop("checked",  items.disablePoll === "on");
         
 
         var pollInterval=parseInt(items.pollInterval);
