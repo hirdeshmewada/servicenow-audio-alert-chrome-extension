@@ -13,18 +13,9 @@ const state = {
     oldList: [],
     scheduledPollMinutes: null,
     scheduledPollEnabled: null,
-    hasUserInteraction: false // Track user interaction for audio playback
+    audioContext: null,
+    userInteracted: false
 };
-
-// Track user interaction for audio playback
-chrome.action.onClicked.addListener(() => {
-    state.hasUserInteraction = true;
-    console.log('✅ User interaction detected - audio enabled');
-    // Reset after 5 seconds
-    setTimeout(() => {
-        state.hasUserInteraction = false;
-    }, 5000);
-});
 
 // Initialize service worker
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -37,28 +28,38 @@ chrome.runtime.onInstalled.addListener(async (details) => {
             console.log('Could not open options page:', e);
         }
     }
+    
+    // Initialize audio context for service worker
+    try {
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log('🎵 Audio context initialized:', state.audioContext.state);
+    } catch (error) {
+        console.log('Could not initialize audio context:', error);
+    }
+    
     await getSavedData();
+});
+
+// Track user interaction for audio playback
+chrome.action.onClicked.addListener(async (tab) => {
+    state.userInteracted = true;
+    console.log('👆 User interacted with extension');
+    
+    // Resume audio context if suspended
+    if (state.audioContext && state.audioContext.state === 'suspended') {
+        try {
+            await state.audioContext.resume();
+            console.log('🎵 Audio context resumed by user interaction');
+        } catch (error) {
+            console.log('Could not resume audio context:', error);
+        }
+    }
 });
 
 // Message listener for options page updates
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.type === "SNOW_AUDIO_ALERT_OPTIONS_UPDATED") {
         getSavedData();
-    } else if (msg && msg.type === "TEST_AUDIO") {
-        // Handle test audio request
-        audioNotification().then(() => {
-            sendResponse({ success: true });
-        }).catch(error => {
-            console.error('Test audio failed:', error);
-            sendResponse({ success: false, error: error.message });
-        });
-        return true; // Keep message channel open for async response
-    } else if (msg && msg.type === "SET_USER_INTERACTION") {
-        // Set user interaction flag to allow audio
-        state.hasUserInteraction = true;
-        console.log('✅ User interaction set for audio test');
-        sendResponse({ success: true });
-        return true;
     }
 });
 
@@ -295,26 +296,21 @@ async function getDataREST(url) {
 
 async function audioNotification() {
     try {
-        console.log('🔊 Attempting to play audio notification...');
+        console.log('🔊 Audio notification triggered');
         
-        // Check if we have user interaction (required for service workers)
-        if (!state.hasUserInteraction) {
-            console.log('⚠️ No user interaction detected, skipping audio');
-            // Show notification instead
-            chrome.notifications.create({
-                type: 'basic',
-                iconUrl: chrome.runtime.getURL('images/ITSM128.png'),
-                title: '🔊 ServiceNow Alert',
-                message: 'New items detected in your queue'
-            });
-            return;
+        // Ensure audio context is available and resumed
+        if (!state.audioContext) {
+            state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         
-        // Method 1: Try direct Audio playback
-        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
-        console.log('🎵 Audio URL:', audioUrl);
+        if (state.audioContext.state === 'suspended') {
+            console.log('🎵 Resuming suspended audio context...');
+            await state.audioContext.resume();
+        }
         
-        // Create audio with proper context for service worker
+        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
+        console.log('🎵 Playing audio from:', audioUrl);
+        
         const audio = new Audio(audioUrl);
         audio.volume = 0.8;
         audio.preload = 'auto';
@@ -324,78 +320,43 @@ async function audioNotification() {
         audio.addEventListener('canplay', () => console.log('🎵 Audio can play'));
         audio.addEventListener('play', () => console.log('🎵 Audio playing'));
         audio.addEventListener('ended', () => console.log('🎵 Audio ended'));
-        audio.addEventListener('error', (e) => {
-            console.error('🎵 Audio error:', e);
-            console.error('Audio error details:', {
-                error: e.error,
-                message: e.message,
-                code: e.code
-            });
-            // Try fallback method
-            setTimeout(() => audioNotificationFallback(), 100);
-        });
+        audio.addEventListener('error', (e) => console.error('🎵 Audio error:', e));
         
-        // Try to play with timeout
+        // Try to play audio with proper error handling
         const playPromise = audio.play();
         
         if (playPromise !== undefined) {
             await playPromise;
             console.log('✅ Audio notification played successfully');
-        } else {
-            console.log('⚠️ Audio play returned undefined, trying fallback');
-            setTimeout(() => audioNotificationFallback(), 200);
         }
         
     } catch (error) {
-        console.error('❌ Primary audio method failed:', error);
-        console.error('Error details:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
-        // Try fallback method
-        setTimeout(() => audioNotificationFallback(), 300);
-    }
-}
-
-// Fallback audio method
-async function audioNotificationFallback() {
-    try {
-        console.log('🔄 Trying fallback audio method...');
+        console.error('❌ Could not play audio notification:', error);
         
-        // Method 2: Create audio with different approach
-        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
-        const audio = new Audio();
-        audio.src = audioUrl;
-        audio.volume = 0.8;
-        audio.crossOrigin = 'anonymous';
-        
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-            await playPromise;
-            console.log('✅ Fallback audio method worked');
-        } else {
-            console.log('❌ Fallback method also failed');
-            // Show notification as last resort
-            chrome.notifications.create({
+        // Fallback: Create a notification indicating audio failed
+        try {
+            await chrome.notifications.create('audio-fallback', {
                 type: 'basic',
                 iconUrl: chrome.runtime.getURL('images/ITSM128.png'),
                 title: '🔊 ServiceNow Alert',
-                message: 'New items detected - audio could not play'
+                message: 'New ticket detected! Check your queues.',
+                requireInteraction: false
             });
+            
+            // Auto-clear after 5 seconds
+            setTimeout(async () => {
+                await chrome.notifications.clear('audio-fallback');
+            }, 5000);
+        } catch (notificationError) {
+            console.error('Could not create fallback notification:', notificationError);
         }
-        
-    } catch (fallbackError) {
-        console.error('❌ All audio methods failed:', fallbackError);
-        
-        // Method 3: Last resort - try to create notification instead
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: chrome.runtime.getURL('images/ITSM128.png'),
-            title: '⚠️ Audio Alert Failed',
-            message: 'ServiceNow alert detected but audio could not play'
-        });
     }
+}
+
+// Test audio function for debugging
+async function testAudioNotification() {
+    console.log('🧪 Testing audio notification...');
+    await audioNotification();
 }
 
 async function showNotification(ticketNumber, ticketDescription, severity) {

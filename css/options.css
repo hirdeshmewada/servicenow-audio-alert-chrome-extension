@@ -207,17 +207,6 @@ label{
 	border-color: var(--border);
 }
 
-.btn-secondary{
-	background: #6c757d;
-	border-color: #6c757d;
-	color: white;
-}
-
-.btn-secondary:hover{
-	background: #5a6268;
-	border-color: #5a6268;
-}
-
 .alert{
 	border-radius: 12px;
 	box-shadow: var(--shadow);

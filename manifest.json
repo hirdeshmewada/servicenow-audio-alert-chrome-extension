@@ -35,12 +35,5 @@
   
   "host_permissions": [
 	"https://*.service-now.com/*"
-  ],
-  
-  "web_accessible_resources": [
-    {
-      "resources": ["sound/*.mp3"],
-      "matches": ["<all_urls>"]
-    }
   ]
 }

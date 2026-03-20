@@ -7,47 +7,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     await restoreOptions();
     updateLastPollTime();
-    
-    // Add test audio button
-    addTestAudioButton();
 });
-
-// Add test audio button
-function addTestAudioButton() {
-    const helpCard = document.querySelector('.card:last-child .actions');
-    if (helpCard) {
-        const testButton = document.createElement('button');
-        testButton.textContent = '🔊 Test Audio';
-        testButton.className = 'btn btn-secondary';
-        testButton.type = 'button';
-        testButton.style.marginLeft = '10px';
-        testButton.addEventListener('click', testAudioNotification);
-        helpCard.appendChild(testButton);
-    }
-}
-
-// Test audio notification
-async function testAudioNotification() {
-    try {
-        showSuccessMessage('Testing audio...');
-        
-        // Set user interaction flag to allow audio playback
-        chrome.runtime.sendMessage({ type: 'SET_USER_INTERACTION' }, () => {
-            // Send message to background to test audio
-            chrome.runtime.sendMessage({ type: 'TEST_AUDIO' }, (response) => {
-                if (response && response.success) {
-                    showSuccessMessage('✅ Audio test successful!');
-                } else {
-                    showErrorMessage('❌ Audio test failed: ' + (response.error || 'Unknown error'));
-                }
-            });
-        });
-        
-    } catch (error) {
-        console.error('Error testing audio:', error);
-        showErrorMessage('Error testing audio');
-    }
-}
 
 async function initializeOptions() {
     try {
