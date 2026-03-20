@@ -40,10 +40,10 @@ function setupEventListeners() {
 
     // Header controls
     const startStopBtn = document.getElementById('startStopBtn');
-    const muteBtn = document.getElementById('muteBtn');
+    const stopAlarmBtn = document.getElementById('stopAlarmBtn');
     
     if (startStopBtn) startStopBtn.addEventListener('click', toggleMonitoring);
-    if (muteBtn) muteBtn.addEventListener('click', toggleMute);
+    if (stopAlarmBtn) stopAlarmBtn.addEventListener('click', stopCurrentAlarm);
 
     // Button listeners
     const saveBtn = document.getElementById('save');
@@ -115,6 +115,17 @@ function switchTab(tabName) {
     currentTab = tabName;
 }
 
+async function stopCurrentAlarm() {
+    try {
+        // Send message to offscreen document to stop audio
+        await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
+        showSuccessMessage('⏹️ Current alarm stopped');
+    } catch (error) {
+        console.error('Error stopping alarm:', error);
+        showErrorMessage('❌ Could not stop alarm');
+    }
+}
+
 async function toggleMonitoring() {
     isMonitoring = !isMonitoring;
     updateMonitoringButton();
@@ -132,26 +143,6 @@ async function toggleMonitoring() {
     await chrome.storage.local.set({ isMonitoring });
 }
 
-async function toggleMute() {
-    isMuted = !isMuted;
-    updateMuteButton();
-    
-    if (isMuted) {
-        showSuccessMessage('🔇 Audio muted');
-    } else {
-        showSuccessMessage('🔊 Audio unmuted');
-    }
-    
-    // Save mute state and update disable alarm setting
-    const disableAlarmCheckbox = document.getElementById('disableAlarm');
-    if (disableAlarmCheckbox) {
-        disableAlarmCheckbox.checked = isMuted;
-        await saveOptions();
-    }
-    
-    await chrome.storage.local.set({ isMuted });
-}
-
 function updateMonitoringButton() {
     const startStopIcon = document.getElementById('startStopIcon');
     const startStopBtn = document.getElementById('startStopBtn');
@@ -165,23 +156,6 @@ function updateMonitoringButton() {
             startStopIcon.textContent = '▶️';
             startStopBtn.classList.remove('active');
             startStopBtn.title = 'Start Monitoring';
-        }
-    }
-}
-
-function updateMuteButton() {
-    const muteIcon = document.getElementById('muteIcon');
-    const muteBtn = document.getElementById('muteBtn');
-    
-    if (muteIcon && muteBtn) {
-        if (isMuted) {
-            muteIcon.textContent = '🔇';
-            muteBtn.classList.add('active');
-            muteBtn.title = 'Unmute';
-        } else {
-            muteIcon.textContent = '🔊';
-            muteBtn.classList.remove('active');
-            muteBtn.title = 'Mute';
         }
     }
 }
@@ -392,11 +366,6 @@ async function restoreOptions() {
         
         // Update monitoring status
         updateMonitoringStatus();
-        
-        // Restore mute state
-        const muteState = await chrome.storage.local.get(['isMuted']);
-        isMuted = muteState.isMuted || false;
-        updateMuteButton();
         
         // Restore monitoring state
         const monitoringState = await chrome.storage.local.get(['isMonitoring']);

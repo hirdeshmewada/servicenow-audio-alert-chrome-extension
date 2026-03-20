@@ -1,12 +1,11 @@
 // ServiceNow Audio Alerts - Modern Service Worker (Manifest V3)
 // Upgraded from legacy background.js for better security and performance
 
-// Global state management
+// Global state
 const state = {
     currentNumberTickets: 0,
     currentNumberTask: 0,
     currentNumberTotal: 0,
-    ticketNumberGlobal: null,
     rootURL: null,
     newStamp: 0,
     newList: [],
