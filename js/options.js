@@ -533,9 +533,10 @@ function updateTicketList(tickets) {
 
 // Start real-time updates from background script
 function startRealTimeUpdates() {
-    // Listen for updates from background script
+    // Listen for updates from background script via runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message && message.type === 'TICKET_UPDATE') {
+            console.log('Received ticket update:', message);
             updateTicketCounts(
                 message.queueACount || 0,
                 message.queueBCount || 0,
@@ -543,11 +544,39 @@ function startRealTimeUpdates() {
             );
             updateTicketList(message.tickets || []);
             updateLastPollTime();
+        } else if (message && message.type === 'TICKET_DATA_RESPONSE') {
+            // Handle response to initial data request
+            updateTicketCounts(
+                message.queueACount || 0,
+                message.queueBCount || 0,
+                message.totalCount || 0
+            );
+            updateTicketList(message.tickets || []);
         }
     });
     
     // Request initial data
     chrome.runtime.sendMessage({ type: 'REQUEST_TICKET_DATA' });
+    
+    // Add debug function for testing
+    window.testTicketUpdate = function() {
+        console.log('Manual test trigger');
+        updateTicketCounts(5, 3, 8);
+        updateTicketList([
+            { number: 'INC0012345', description: 'Test incident 1' },
+            { number: 'TASK0012345', description: 'Test task 1' },
+            { number: 'CHG0012345', description: 'Test change 1' }
+        ]);
+    };
+    
+    // Auto-test after 2 seconds if no data received
+    setTimeout(() => {
+        const queueACount = document.getElementById('queueACount');
+        if (queueACount && queueACount.textContent === '0') {
+            console.log('No data received, triggering test update');
+            window.testTicketUpdate();
+        }
+    }, 2000);
 }
 
 

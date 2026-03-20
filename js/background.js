@@ -372,86 +372,45 @@ async function showNotification(ticketNumber, ticketData, severity) {
         imageName = severityMap[severity];
     }
 
-    // Build rich notification message
+    // Build clean, simple notification message (2-3 lines max)
     let notificationTitle = ticketNumber;
     let notificationMessage = '';
     
     if (ticketData) {
-        // Priority indicators in title
-        const priorityLabel = getPriorityLabel(severity);
-        notificationTitle = `${ticketNumber} - ${priorityLabel}`;
-        
-        // Build detailed message
         const messageParts = [];
         
-        // Description
-        if (ticketData.description) {
-            messageParts.push(`📝 ${ticketData.description.substring(0, 100)}${ticketData.description.length > 100 ? '...' : ''}`);
-        }
-        
-        // Assignment info
-        if (ticketData.assigned_to && ticketData.assigned_to.display_value) {
-            messageParts.push(`👤 Assigned to: ${ticketData.assigned_to.display_value}`);
-        } else if (ticketData.assignment_group) {
-            messageParts.push(`👥 Group: ${ticketData.assignment_group}`);
-        }
-        
-        // State/Status
-        if (ticketData.state) {
-            messageParts.push(`📊 Status: ${ticketData.state}`);
-        }
-        
-        // Impact
-        if (ticketData.impact) {
-            messageParts.push(`⚡ Impact: ${ticketData.impact}`);
-        }
-        
-        // Category
-        if (ticketData.category) {
-            messageParts.push(`📂 Category: ${ticketData.category}`);
-        }
-        
-        // Next step deadline (SLA)
-        if (ticketData.u_next_step_date_and_time) {
-            const nextStep = new Date(ticketData.u_next_step_date_and_time);
-            const now = new Date();
-            const isOverdue = nextStep < now;
-            const timeDiff = Math.abs(nextStep - now);
-            const hoursDiff = Math.floor(timeDiff / (1000 * 60 * 60));
-            
-            if (isOverdue) {
-                messageParts.push(`⏰ OVERDUE by ${hoursDiff}h`);
-            } else {
-                messageParts.push(`⏰ Due in ${hoursDiff}h`);
-            }
-        }
-        
-        // Service downtime info
-        if (ticketData.u_service_downtime_started && ticketData.u_service_downtime_end) {
-            const startTime = new Date(ticketData.u_service_downtime_started);
-            const endTime = new Date(ticketData.u_service_downtime_end);
-            const duration = Math.floor((endTime - startTime) / (1000 * 60 * 60));
-            messageParts.push(`🔧 Downtime: ${duration}h`);
-        }
-        
-        // Resolution info for updated tickets
-        if (ticketData.resolved_by && ticketData.resolved_by.display_value) {
-            messageParts.push(`✅ Resolved by: ${ticketData.resolved_by.display_value}`);
-        }
-        
-        // Account/customer info
+        // Line 1: Account (if available)
         if (ticketData.account && ticketData.account.display_value) {
-            messageParts.push(`🏢 Account: ${ticketData.account.display_value}`);
+            messageParts.push(`🏢 ${ticketData.account.display_value}`);
         }
         
-        // Modification count (for subsequent updates)
-        if (ticketData.sys_mod_count > 1) {
-            messageParts.push(`🔄 Updated ${ticketData.sys_mod_count} times`);
+        // Line 2: Assigned To + State
+        const assignmentInfo = [];
+        if (ticketData.assigned_to && ticketData.assigned_to.display_value) {
+            assignmentInfo.push(`👤 ${ticketData.assigned_to.display_value}`);
+        } else if (ticketData.assignment_group) {
+            assignmentInfo.push(`👥 ${ticketData.assignment_group}`);
+        }
+        
+        if (ticketData.state) {
+            assignmentInfo.push(`📊 ${ticketData.state}`);
+        }
+        
+        if (assignmentInfo.length > 0) {
+            messageParts.push(assignmentInfo.join(' | '));
+        }
+        
+        // Line 3: Short Description (truncated)
+        if (ticketData.short_description) {
+            const description = ticketData.short_description.length > 60 
+                ? ticketData.short_description.substring(0, 60) + '...'
+                : ticketData.short_description;
+            messageParts.push(`� ${description}`);
         }
         
         notificationMessage = messageParts.join('\n');
     } else {
-        notificationMessage = 'New ServiceNow item';
+        notificationMessage = 'New ServiceNow ticket';
     }
 
     try {
@@ -462,10 +421,10 @@ async function showNotification(ticketNumber, ticketData, severity) {
             message: notificationMessage
         });
 
-        // Auto-clear notification after 8 seconds (longer for detailed info)
+        // Auto-clear notification after 6 seconds
         setTimeout(async () => {
             await chrome.notifications.clear('reminder');
-        }, 8000);
+        }, 6000);
     } catch (error) {
         console.error('Error creating notification:', error);
     }
@@ -548,7 +507,7 @@ function changeURLforRESTAPI(url) {
         
         // Add JSON and required fields
         const separator = restURL.includes('?') ? '&' : '?';
-        restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on`;
+        restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
         
         return restURL;
     } catch (error) {
@@ -577,27 +536,26 @@ function removeParam(key, sourceURL) {
 // Send ticket updates to options page
 async function sendTicketUpdateToOptions() {
     try {
-        // Get ticket details from storage or current state
+        // Get ticket details from current state
         const tickets = state.newList.slice(0, 5).map(ticketNum => ({
             number: ticketNum,
             description: 'ServiceNow ticket' // Could be enhanced with real descriptions
         }));
         
-        // Send message to all tabs (options page)
-        const tabs = await chrome.tabs.query({});
-        for (const tab of tabs) {
-            if (tab.url && tab.url.includes('options.html')) {
-                chrome.tabs.sendMessage(tab.id, {
-                    type: 'TICKET_UPDATE',
-                    queueACount: state.currentNumberTickets,
-                    queueBCount: state.currentNumberTask,
-                    totalCount: state.currentNumberTotal,
-                    tickets: tickets
-                }).catch(() => {
-                    // Ignore errors if tab is closed or not ready
-                });
-            }
-        }
+        // Send message via runtime (better than tabs approach)
+        await chrome.runtime.sendMessage({
+            type: 'TICKET_UPDATE',
+            queueACount: state.currentNumberTickets,
+            queueBCount: state.currentNumberTask,
+            totalCount: state.currentNumberTotal,
+            tickets: tickets
+        });
+        
+        console.log('Sent ticket update to options:', {
+            queueACount: state.currentNumberTickets,
+            queueBCount: state.currentNumberTask,
+            totalCount: state.currentNumberTotal
+        });
     } catch (error) {
         console.log('Could not send ticket update to options:', error);
     }
