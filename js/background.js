@@ -355,48 +355,40 @@ async function audioNotification() {
     }
 }
 
-async function showNotification(ticketNumber, ticketData, severity) {
-    if (!ticketNumber) return;
-
-    var imageName;
+function showNotification(ticketNumber, ticketDescription, severity) {
+    var imageName
     switch (severity) {
         case "1":
-            imageName = "Sev1.png";
+            imageName = "Sev1.png"
             break;
         case "2":
-            imageName = "Sev2.png";
+            imageName = "Sev2.png"
             break;
         case "3":
-            imageName = "Sev3.png";
+            imageName = "Sev3.png"
             break;
         case "4":
-            imageName = "Sev4.png";
+            imageName = "Sev4.png"
             break;
         case "10":
-            imageName = "ServiceRequest.png";
+            imageName = "ServiceRequest.png"
             break;
         case "15":
-            imageName = "change.png";
+            imageName = "change.png"
             break;
         default:
-            imageName = "ITSM128.png";
+            imageName = "ITSM128.png"
     }
+    chrome.notifications.create('reminder', {
+        type: 'basic',
+        iconUrl: 'images/' + imageName,
+        title: ticketNumber,
+        message: ticketDescription
+    }, function(notificationId) {});
+    
 
-    try {
-        await chrome.notifications.create('reminder', {
-            type: 'basic',
-            iconUrl: chrome.runtime.getURL('images/' + imageName),
-            title: ticketNumber,
-            message: ticketData?.short_description || 'New ServiceNow ticket'
-        });
-
-        // Auto-clear notification after 5 seconds (matching GitHub implementation)
-        setTimeout(function() {
-            chrome.notifications.clear('reminder', function() {});
-        }, 5000);
-    } catch (error) {
-        console.error('Error creating notification:', error);
-    }
+    //include this line if you want to clear notification after 5 seconds
+    setTimeout(function(){chrome.notifications.clear("reminder",function(){});},5000);
 }
 
 // Notification click handler - opens appropriate ServiceNow page based on ticket type
