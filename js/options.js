@@ -509,6 +509,93 @@ function getTrendClass(current, previous) {
     return 'neutral';
 }
 
+// Convert state numbers to readable state names (Official ServiceNow State Mapping)
+function getStateName(stateNumber) {
+    const STATE_MAP = {
+        "1": "New",
+        "2": "In Progress", 
+        "3": "On Hold",
+        "4": "Resolved",
+        "5": "Closed",
+        "6": "Canceled",
+        "7": "Awaiting Problem",
+        "8": "Awaiting User Info",
+        "9": "Awaiting Evidence",
+        "10": "Awaiting Vendor",
+        "11": "Resolved by Caller"
+    };
+    return STATE_MAP[stateNumber] || `State ${stateNumber}`;
+}
+
+// Convert impact numbers to readable names
+function getImpactName(impactNumber) {
+    const IMPACT_MAP = {
+        "1": "High",
+        "2": "Medium", 
+        "3": "Low",
+        "4": "Planning"
+    };
+    return IMPACT_MAP[impactNumber] || `Impact ${impactNumber}`;
+}
+
+// Convert urgency numbers to readable names
+function getUrgencyName(urgencyNumber) {
+    const URGENCY_MAP = {
+        "1": "High",
+        "2": "Medium", 
+        "3": "Low"
+    };
+    return URGENCY_MAP[urgencyNumber] || `Urgency ${urgencyNumber}`;
+}
+
+// Convert priority numbers to readable names
+function getPriorityName(priorityNumber) {
+    const PRIORITY_MAP = {
+        "1": "Critical",
+        "2": "High", 
+        "3": "Moderate",
+        "4": "Low",
+        "5": "Planning"
+    };
+    return PRIORITY_MAP[priorityNumber] || `Priority ${priorityNumber}`;
+}
+
+// Convert contact type to readable name
+function getContactTypeName(contactType) {
+    const CONTACT_TYPE_MAP = {
+        "Phone": "Phone",
+        "Email": "Email", 
+        "Chat": "Chat",
+        "Self-service": "Self-service",
+        "IVR": "IVR",
+        "Fault Management": "Fault Management",
+        "Proactive": "Proactive"
+    };
+    return CONTACT_TYPE_MAP[contactType] || contactType;
+}
+
+// Format date/time for display
+function formatDateTime(dateTimeStr) {
+    if (!dateTimeStr || dateTimeStr === 'Not set') return 'Not set';
+    
+    try {
+        const date = new Date(dateTimeStr);
+        if (isNaN(date.getTime())) return dateTimeStr;
+        
+        // Format as local date/time
+        return date.toLocaleString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+    } catch (error) {
+        return dateTimeStr;
+    }
+}
+
 // Update ticket list
 function updateTicketList(tickets) {
     const ticketListElement = document.getElementById('ticketList');
@@ -521,12 +608,52 @@ function updateTicketList(tickets) {
     
     // Show max 5 tickets
     const displayTickets = tickets.slice(0, 5);
-    const ticketHtml = displayTickets.map(ticket => `
-        <div class="ticket-item">
-            <div class="ticket-number">${ticket.number}</div>
-            <div class="ticket-desc">${ticket.description || 'No description'}</div>
-        </div>
-    `).join('');
+    const ticketHtml = displayTickets.map(ticket => {
+        // Get assigned to information
+        const assignedTo = ticket.assigned_to?.display_value || 
+                         ticket.assignment_group?.display_value || 
+                         ticket.assignment_group || 
+                         'Unassigned';
+        
+        // Get next step date/time (formatted)
+        const nextStepDateTime = formatDateTime(
+            ticket.due_date || 
+            ticket.expected_start || 
+            ticket.work_end || 
+            'Not set'
+        );
+        
+        // Get state name
+        const stateName = getStateName(ticket.state?.toString() || '1');
+        
+        // Get impact/priority if available
+        const impact = ticket.impact ? getImpactName(ticket.impact.toString()) : '';
+        const priority = ticket.priority ? getPriorityName(ticket.priority.toString()) : '';
+        
+        // Build additional info string
+        let additionalInfo = '';
+        if (impact && priority) {
+            additionalInfo = `${impact} / ${priority}`;
+        } else if (impact) {
+            additionalInfo = impact;
+        } else if (priority) {
+            additionalInfo = priority;
+        }
+        
+        return `
+            <div class="ticket-item">
+                <div class="ticket-header">
+                    <div class="ticket-number">${ticket.number}</div>
+                    <div class="ticket-state">${stateName}</div>
+                </div>
+                <div class="ticket-details">
+                    <div class="ticket-assigned">👤 ${assignedTo}</div>
+                    <div class="ticket-next-step">📅 ${nextStepDateTime}</div>
+                </div>
+                ${additionalInfo ? `<div class="ticket-priority">⚡ ${additionalInfo}</div>` : ''}
+            </div>
+        `;
+    }).join('');
     
     ticketListElement.innerHTML = ticketHtml;
 }

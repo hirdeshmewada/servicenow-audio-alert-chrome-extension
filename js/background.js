@@ -358,73 +358,31 @@ async function audioNotification() {
 async function showNotification(ticketNumber, ticketData, severity) {
     if (!ticketNumber) return;
 
-    let imageName = "ITSM128.png";
-    const severityMap = {
-        "1": "Sev1.png",
-        "2": "Sev2.png", 
-        "3": "Sev3.png",
-        "4": "Sev4.png",
-        "10": "ServiceRequest.png",
-        "15": "change.png"
-    };
-
-    if (severityMap[severity]) {
-        imageName = severityMap[severity];
-    }
-
-    // Build clean, simple notification message (2-3 lines max)
-    let notificationTitle = ticketNumber;
-    let notificationMessage = '';
-    
-    if (ticketData) {
-        const messageParts = [];
-        
-        // Line 1: Account (if available)
-        if (ticketData.account && ticketData.account.display_value) {
-            messageParts.push(`🏢 ${ticketData.account.display_value}`);
-        }
-        
-        // Line 2: Assigned To + State
-        const assignmentInfo = [];
-        if (ticketData.assigned_to && ticketData.assigned_to.display_value) {
-            assignmentInfo.push(`👤 ${ticketData.assigned_to.display_value}`);
-        } else if (ticketData.assignment_group) {
-            assignmentInfo.push(`👥 ${ticketData.assignment_group}`);
-        }
-        
-        if (ticketData.state) {
-            assignmentInfo.push(`📊 ${ticketData.state}`);
-        }
-        
-        if (assignmentInfo.length > 0) {
-            messageParts.push(assignmentInfo.join(' | '));
-        }
-        
-        // Line 3: Short Description (truncated)
-        if (ticketData.short_description) {
-            const description = ticketData.short_description.length > 60 
-                ? ticketData.short_description.substring(0, 60) + '...'
-                : ticketData.short_description;
-            messageParts.push(`� ${description}`);
-        }
-        
-        notificationMessage = messageParts.join('\n');
-    } else {
-        notificationMessage = 'New ServiceNow ticket';
+    var imageName;
+    switch (severity) {
+        case "1":
+            imageName = "Sev1.png";
+            break;
+        case "2":
+            imageName = "Sev2.png";
+            break;
+        case "3":
+            imageName = "Sev3.png";
+            break;
+        case "4":
+            imageName = "Sev4.png";
+            break;
+        default:
+            imageName = "ITSM128.png";
     }
 
     try {
         await chrome.notifications.create('reminder', {
             type: 'basic',
-            iconUrl: chrome.runtime.getURL(`images/${imageName}`),
-            title: notificationTitle,
-            message: notificationMessage
+            iconUrl: chrome.runtime.getURL('images/' + imageName),
+            title: ticketNumber,
+            message: ticketData?.short_description || 'New ServiceNow ticket'
         });
-
-        // Auto-clear notification after 6 seconds
-        setTimeout(async () => {
-            await chrome.notifications.clear('reminder');
-        }, 6000);
     } catch (error) {
         console.error('Error creating notification:', error);
     }

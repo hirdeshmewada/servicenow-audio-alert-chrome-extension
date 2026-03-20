@@ -193,7 +193,7 @@
         }
 
         .ticket-item {
-            padding: 8px 0;
+            padding: 10px;
             border-bottom: 1px solid #f0f2f5;
             font-size: 13px;
         }
@@ -202,14 +202,51 @@
             border-bottom: none;
         }
 
+        .ticket-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
         .ticket-number {
             font-weight: 600;
             color: #00a8e0;
+            font-size: 14px;
         }
 
-        .ticket-desc {
-            color: #64748b;
+        .ticket-state {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .ticket-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             font-size: 12px;
+            color: #64748b;
+        }
+
+        .ticket-assigned {
+            flex: 1;
+        }
+
+        .ticket-next-step {
+            font-size: 11px;
+            color: #6c757d;
+        }
+
+        .ticket-priority {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 4px;
+            padding-top: 4px;
+            border-top: 1px solid #f8f9fa;
         }
 
         /* Form Elements - ServiceNow Style */
@@ -547,24 +584,7 @@
                 </div>
             </div>
 
-            <div class="card">
-                <div class="card-title">Queue Details</div>
-                <div class="queue-info">
-                    <div>
-                        <div class="queue-label">Queue A</div>
-                        <div class="queue-url" id="queueAUrl">Not configured</div>
-                    </div>
-                    <div class="queue-count" id="queueACountBadge">0</div>
-                </div>
-                <div class="queue-info">
-                    <div>
-                        <div class="queue-label">Queue B (Optional)</div>
-                        <div class="queue-url" id="queueBUrl">Not configured</div>
-                    </div>
-                    <div class="queue-count" id="queueBCountBadge">0</div>
-                </div>
-            </div>
-
+            
             <div class="card">
                 <div class="card-title">Recent Tickets</div>
                 <div class="ticket-list" id="ticketList">
