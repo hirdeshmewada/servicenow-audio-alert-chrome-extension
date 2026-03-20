@@ -372,6 +372,12 @@ async function showNotification(ticketNumber, ticketData, severity) {
         case "4":
             imageName = "Sev4.png";
             break;
+        case "10":
+            imageName = "ServiceRequest.png";
+            break;
+        case "15":
+            imageName = "change.png";
+            break;
         default:
             imageName = "ITSM128.png";
     }
@@ -383,8 +389,63 @@ async function showNotification(ticketNumber, ticketData, severity) {
             title: ticketNumber,
             message: ticketData?.short_description || 'New ServiceNow ticket'
         });
+
+        // Auto-clear notification after 5 seconds (matching GitHub implementation)
+        setTimeout(function() {
+            chrome.notifications.clear('reminder', function() {});
+        }, 5000);
     } catch (error) {
         console.error('Error creating notification:', error);
+    }
+}
+
+// Notification click handler - opens appropriate ServiceNow page based on ticket type
+chrome.notifications.onClicked.addListener(notificationClicked);
+
+async function notificationClicked() {
+    const result = await chrome.storage.sync.get(['rooturl']);
+    const rootURL = result.rooturl;
+    
+    if (!rootURL || !state.ticketNumberGlobal) return;
+    
+    let urlTicketSearch;
+    const ticketPrefix = state.ticketNumberGlobal.substring(0, 3);
+    
+    switch (ticketPrefix) {
+        case "TAS":
+            urlTicketSearch = rootURL + "/sc_task.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "INC":
+            urlTicketSearch = rootURL + "/incident.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "CSP":
+            urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "CSR":
+            urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "REQ":
+            urlTicketSearch = rootURL + "/sc_request.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "CHG":
+            urlTicketSearch = rootURL + "/change_request.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "RIT":
+            urlTicketSearch = rootURL + "/sc_req_item.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        case "CAL":
+            urlTicketSearch = rootURL + "/new_call.do?sys_id=" + state.ticketNumberGlobal;
+            break;
+        default:
+            urlTicketSearch = rootURL + "/task_list.do?sysparm_query=numberLIKE" + state.ticketNumberGlobal + "&sysparm_first_row=1&sysparm_view=";
+    }
+
+    try {
+        await chrome.tabs.create({
+            'url': urlTicketSearch
+        });
+    } catch (error) {
+        console.error('Error opening ticket:', error);
     }
 }
 
