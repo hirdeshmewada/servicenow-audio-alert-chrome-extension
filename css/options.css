@@ -1,5 +1,225 @@
-.settings {
-	padding: 25px;
+/* Modern, simple UI for the options/popup page */
+
+:root{
+	--bg: #f6f7fb;
+	--card: #ffffff;
+	--text: #111827;
+	--muted: #6b7280;
+	--border: #e5e7eb;
+	--primary: #2563eb;
+	--shadow: 0 8px 30px rgba(17,24,39,.08);
+	--radius: 14px;
+}
+
+html, body{
+	height: 100%;
+}
+
+body{
+	background: var(--bg);
+	color: var(--text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+	line-height: 1.35;
+}
+
+.settings{
+	padding: 18px 16px 22px;
+	max-width: 860px;
+	margin: 0 auto;
+}
+
+.page-header{
+	margin: 6px 0 14px;
+	padding: 0;
+	border: 0;
+}
+
+.page-title{
+	font-size: 18px;
+	font-weight: 700;
+	margin: 0 0 2px;
+	letter-spacing: .2px;
+}
+
+.page-subtitle{
+	color: var(--muted);
+	margin: 0;
+	font-size: 12.5px;
+}
+
+.card{
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	padding: 14px 14px 10px;
+	margin: 12px 0;
+}
+
+.card-title{
+	font-size: 13px;
+	font-weight: 700;
+	margin: 0 0 10px;
+}
+
+.help-block{
+	color: var(--muted);
+	font-size: 12px;
+	margin-top: 6px;
+}
+
+/* Inputs */
+.form-control{
+	border-radius: 10px;
+	border: 1px solid var(--border);
+	box-shadow: none;
+	height: 38px;
+	padding: 8px 10px;
+	max-width: 680px;
+}
+
+.form-control:focus{
+	border-color: rgba(37,99,235,.55);
+	box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+
+label{
+	font-weight: 600;
+	font-size: 12.5px;
+}
+
+/* Toggle switches (works with existing checkbox inputs) */
+.toggle-row{
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 10px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: rgba(255,255,255,.65);
+}
+
+.toggle-row + .toggle-row{
+	margin-top: 10px;
+}
+
+.toggle-meta{
+	min-width: 0;
+}
+
+.toggle-label{
+	margin: 0;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.toggle-help{
+	margin: 3px 0 0;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.toggle{
+	position: relative;
+	display: inline-block;
+	width: 46px;
+	height: 26px;
+	flex: 0 0 auto;
+}
+
+.toggle input{
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.toggle-slider{
+	position: absolute;
+	cursor: pointer;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: #d1d5db;
+	transition: .18s;
+	border-radius: 999px;
+}
+
+.toggle-slider:before{
+	position: absolute;
+	content: "";
+	height: 20px;
+	width: 20px;
+	left: 3px;
+	top: 3px;
+	background-color: white;
+	transition: .18s;
+	border-radius: 999px;
+	box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
+
+.toggle input:checked + .toggle-slider{
+	background-color: var(--primary);
+}
+
+.toggle input:checked + .toggle-slider:before{
+	transform: translateX(20px);
+}
+
+/* Radio groups */
+.radio-row{
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 18px;
+	align-items: center;
+	margin-top: 6px;
+}
+
+.radio-row label{
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.radio-row input[type="radio"]{
+	margin-right: 6px;
+}
+
+/* Buttons */
+.actions{
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 6px;
+}
+
+.btn{
+	border-radius: 10px;
+	padding: 8px 12px;
+}
+
+.btn-primary{
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+.btn-default{
+	border-color: var(--border);
+}
+
+.alert{
+	border-radius: 12px;
+	box-shadow: var(--shadow);
+}
+
+/* Make it compact when used as browser_action popup */
+@media (max-width: 520px){
+	.settings{
+		padding: 12px;
+	}
+	.form-control{
+		width: 100% !important;
+	}
 }
 
 @font-face {

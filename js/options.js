@@ -1,202 +1,295 @@
-$("#urlfield").hide();
+// ServiceNow Audio Alerts - Modern Options Script (Manifest V3)
+// Upgraded from legacy options.js for better security and performance
 
-window.onload = function() { var htmlStyle = document.querySelector('html').style; chrome.windows.getCurrent(function(currentWindow) {  htmlStyle.width = (currentWindow.width*.25) + 'px'; console.log(htmlStyle.height, htmlStyle.width); }); };
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    await initializeOptions();
+    setupEventListeners();
+    await restoreOptions();
+    updateLastPollTime();
+});
 
-$(".clicker").click(function(){
-  var myClass = $(this).attr("class");
-  myClass = myClass.split(/\s+/);
-  var last = myClass.length - 1;
-  toggleView(myClass[last]);
-
-
-})
-
-
-function toggleView(myClass) {
-    var showorhide = myClass.substr(0, 1);
-    if (showorhide === "q") {
-      var final = myClass.length;
-      myClass = ".queue" + myClass.substr(final - 1);
-      $(myClass).toggle();
-  }else if(showorhide === "l"){
-    var final = myClass.length;
-    myClass = ".list" + myClass.substr(final - 1);
-    $(myClass).toggle();
-    }else {
-      var final = myClass.length;
-      myClass = ".myHide" + myClass.substr(final - 1);
-      $(myClass).toggle();
+async function initializeOptions() {
+    try {
+        // Set popup window size
+        const currentWindow = await chrome.windows.getCurrent();
+        const htmlStyle = document.querySelector('html').style;
+        htmlStyle.width = (currentWindow.width * 0.25) + 'px';
+        
+        // Hide status message initially
+        const status = document.getElementById('status');
+        if (status) status.style.display = 'none';
+        
+        // Hide url field if it exists
+        const urlField = document.getElementById('urlfield');
+        if (urlField) urlField.style.display = 'none';
+    } catch (error) {
+        console.error('Error initializing options:', error);
     }
 }
 
-
-
-
-function getRootURL(searchunacceptedurl) {
-    index = searchunacceptedurl.indexOf("/", 10)
-    return searchunacceptedurl.slice(0, index)
-}
-
-// Saves options to chrome.storage
-function save_options() {
-    var primary = $("#idprimaryq").val()
-    var rooturl = $("#idrooturl").val()
-    var secondary = $("#idsecondaryq").val()
-    var pollInterval=parseInt($("#pollInterval").val());
-    if(pollInterval<1 || pollInterval==undefined)
-        pollInterval=5;
-    if (isNaN(pollInterval))
-        pollInterval=5;
-
-
+function setupEventListeners() {
+    // Button listeners
+    const saveBtn = document.getElementById('save');
+    const clearBtn = document.getElementById('clear');
     
-    var saveMe = {
-            primary: primary,
-            rooturl: rooturl,
-            secondary: secondary,
-            pollInterval: pollInterval,
-            splitcount: $("input[name='splitcount']:checked").val(),
-            // Always store an explicit value so toggling works reliably
-            disableAlarm: $("#disableAlarm").is(":checked") ? "on" : "off",
-            disablePoll:  $("#disablePoll").is(":checked") ? "on" : "off",
-            alarmCondition: $("input[name='alarmCondition']:checked").val()
+    if (saveBtn) saveBtn.addEventListener('click', saveOptions);
+    if (clearBtn) clearBtn.addEventListener('click', clearOptions);
+    
+    // Input field listeners for auto-save
+    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq'];
+    autoSaveFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('focusout', () => saveOptions());
+            field.addEventListener('keyup', (event) => {
+                if (event.key === 'Enter') {
+                    saveOptions();
+                }
+            });
         }
-
-
-    chrome.storage.sync.set(saveMe, function() {
-        showSuccessMessage("Options saved!")
-        chrome.storage.sync.get(null, function (data) { 
-            console.info(data) 
-        });
-        getSavedData();
     });
-    window.scrollTo(0,0);
+    
+    // Clicker functionality for toggle views
+    const clickers = document.querySelectorAll('.clicker');
+    clickers.forEach(clicker => {
+        clicker.addEventListener('click', (event) => {
+            const classes = event.currentTarget.className.split(/\s+/);
+            const lastClass = classes[classes.length - 1];
+            toggleView(lastClass);
+        });
+    });
 }
 
-function isEmpty(value) {
-    if (value == undefined || value == "" || value == null || value == NaN) {
-        return true
+function toggleView(className) {
+    const prefix = className.charAt(0);
+    let selector;
+    
+    if (prefix === 'q') {
+        selector = `.queue${className.slice(-1)}`;
+    } else if (prefix === 'l') {
+        selector = `.list${className.slice(-1)}`;
+    } else {
+        selector = `.myHide${className.slice(-1)}`;
     }
-    return false
+    
+    const element = document.querySelector(selector);
+    if (element) {
+        element.style.display = element.style.display === 'none' ? 'block' : 'none';
+    }
 }
 
+
+
+
+// URL validation function
+function validateServiceNowURL(url) {
+    if (!url || typeof url !== 'string') return false;
+    try {
+        const urlObj = new URL(url);
+        return urlObj.protocol === 'https:' && urlObj.hostname.includes('service-now.com');
+    } catch {
+        return false;
+    }
+}
+
+// Save options with validation
+async function saveOptions() {
+    try {
+        const primary = document.getElementById('idprimaryq')?.value || '';
+        const rooturl = document.getElementById('idrooturl')?.value || '';
+        const secondary = document.getElementById('idsecondaryq')?.value || '';
+        
+        // Validate URLs
+        if (primary && !validateServiceNowURL(primary)) {
+            showErrorMessage('Primary URL must be a valid ServiceNow HTTPS URL');
+            return;
+        }
+        
+        if (secondary && !validateServiceNowURL(secondary)) {
+            showErrorMessage('Secondary URL must be a valid ServiceNow HTTPS URL');
+            return;
+        }
+        
+        if (rooturl && !validateServiceNowURL(rooturl)) {
+            showErrorMessage('Base URL must be a valid ServiceNow HTTPS URL');
+            return;
+        }
+        
+        // Parse and validate poll interval
+        let pollInterval = parseInt(document.getElementById('pollInterval')?.value || '5', 10);
+        if (isNaN(pollInterval) || pollInterval < 1) {
+            pollInterval = 5;
+        }
+        
+        const saveData = {
+            primary: primary.trim(),
+            rooturl: rooturl.trim(),
+            secondary: secondary.trim(),
+            pollInterval: pollInterval,
+            splitcount: document.querySelector("input[name='splitcount']:checked")?.value || 'false',
+            disableAlarm: document.getElementById('disableAlarm')?.checked ? 'on' : 'off',
+            disablePoll: document.getElementById('disablePoll')?.checked ? 'on' : 'off',
+            alarmCondition: document.querySelector("input[name='alarmCondition']:checked")?.value || 'nonZeroCount'
+        };
+        
+        await chrome.storage.sync.set(saveData);
+        
+        showSuccessMessage('Options saved successfully!');
+        
+        // Notify background script to update
+        chrome.runtime.sendMessage({ type: 'SNOW_AUDIO_ALERT_OPTIONS_UPDATED' });
+        
+        window.scrollTo(0, 0);
+        
+    } catch (error) {
+        console.error('Error saving options:', error);
+        showErrorMessage('Error saving options. Please try again.');
+    }
+}
+
+// Get last poll time from storage
+async function updateLastPollTime() {
+    try {
+        const result = await chrome.storage.local.get(['lastPollAt']);
+        const lastPollElement = document.getElementById('lastPollAt');
+        if (lastPollElement) {
+            lastPollElement.textContent = result.lastPollAt || 'Never';
+        }
+    } catch (error) {
+        console.error('Error getting last poll time:', error);
+    }
+}
+
+// Utility function to check if value is empty
+function isEmpty(value) {
+    return value === undefined || value === null || value === '' || value === NaN;
+}
+
+// Show success message
 function showSuccessMessage(message) {
-    var status = document.getElementById('status');
+    showMessage(message, 'success');
+}
+
+// Show error message
+function showErrorMessage(message) {
+    showMessage(message, 'error');
+}
+
+// Show message with auto-hide
+function showMessage(message, type = 'success') {
+    const status = document.getElementById('status');
+    if (!status) return;
+    
     status.textContent = message;
-    showMessageForWhile(3000)
-}
-
-function showMessageForWhile(millisec) {
-    $("#status").show();
-    setTimeout(function() {
-        $("#status").hide();
+    status.className = type;
+    status.style.display = 'block';
+    
+    setTimeout(() => {
+        status.style.display = 'none';
         status.textContent = '';
-    }, millisec);
-}
-
-function showMessageForMillisec(millisec) {
-    $("#status").show();
-    setTimeout(function() {
-        $("#status").hide();
-        status.textContent = '';
-    }, millisec);
-}
-
-function clear_options() {
-    chrome.storage.sync.clear();
-    $("input").val("");
-    $(".check").attr("checked", false);
-    $("#nonZeroCount").attr("checked", true);
-
-    var status = document.getElementById('status');
-    status.textContent = 'Options erased';
-    $("#status").show();
-    setTimeout(function() {
-        $("#status").hide();
-        status.textContent = '';
+        status.className = '';
     }, 3000);
 }
 
-
-
-
-function restore_options() {
-    chrome.storage.sync.get(['rooturl',
-                             'primary',
-                             'secondary',
-                             'disableAlarm',
-                             'disablePoll',
-                             'pollInterval',
-                             'alarmCondition',
-                             'splitcount'], function(items) {
-        if(items.splitcount == "true"){
-          $("#splitcounttrue").attr("checked", true);
-        }else {
-          $("#splitcountfalse").attr("checked", true);
-        }
-
-
-        if(items.alarmCondition == "nonZeroCount"){
-          $("#nonZeroCount").attr("checked", true);
-        }else {
-          $("#alarmOnNewEntry").attr("checked", true);
-        }
+// Clear all options
+async function clearOptions() {
+    try {
+        await chrome.storage.sync.clear();
         
+        // Reset UI
+        const textInputs = document.querySelectorAll('input[type="text"]');
+        textInputs.forEach(input => input.value = '');
         
+        // Reset checkboxes
+        const checkboxes = ['disableAlarm', 'disablePoll'];
+        checkboxes.forEach(id => {
+            const checkbox = document.getElementById(id);
+            if (checkbox) checkbox.checked = false;
+        });
         
-        // Ensure checkboxes are explicitly set on or off
-        $("#disableAlarm").prop("checked", items.disableAlarm === "on");
-        $("#disablePoll").prop("checked",  items.disablePoll === "on");
+        // Set default values
+        const splitcountFalse = document.getElementById('splitcountfalse');
+        if (splitcountFalse) splitcountFalse.checked = true;
         
-
-        var pollInterval=parseInt(items.pollInterval);
-        if(pollInterval<1 || pollInterval==undefined) 
-            pollInterval=5;
-        if (isNaN(pollInterval)) 
-            pollInterval=5;
-
-        $("#pollInterval").val(pollInterval);
-        $("#idrooturl").val(items.rooturl);
-        $("#idsecondaryq").val(items.secondary);
-        $("#idprimaryq").val(items.primary);
-    });
+        const nonZeroCount = document.getElementById('nonZeroCount');
+        if (nonZeroCount) nonZeroCount.checked = true;
+        
+        // Reset poll interval
+        const pollInterval = document.getElementById('pollInterval');
+        if (pollInterval) pollInterval.value = '5';
+        
+        showSuccessMessage('All options cleared!');
+        
+        // Notify background script
+        chrome.runtime.sendMessage({ type: 'SNOW_AUDIO_ALERT_OPTIONS_UPDATED' });
+        
+    } catch (error) {
+        console.error('Error clearing options:', error);
+        showErrorMessage('Error clearing options. Please try again.');
+    }
 }
 
-$(document).ready(function() {
-    $("#status").hide()
-    restore_options();
-    $("#lastPollAt").text(getlastPollAt());
 
-    $("#idprimaryq").focusout(function(event) {
-                $("#save").click();
-        })
 
-    $("#idrooturl").focusout(function(event) {
-                $("#save").click();
-        })
 
-    $("#idsecondaryq").focusout(function(event) {
-                $("#save").click();
-        })
-
-    $("#idprimaryq").keyup(function(event) {
-        if (event.keyCode == 13) {
-            $("#save").click();
+// Restore options from storage
+async function restoreOptions() {
+    try {
+        const items = await chrome.storage.sync.get([
+            'rooturl', 'primary', 'secondary', 'disableAlarm', 
+            'disablePoll', 'pollInterval', 'alarmCondition', 'splitcount'
+        ]);
+        
+        // Restore split count setting
+        const splitcountTrue = document.getElementById('splitcounttrue');
+        const splitcountFalse = document.getElementById('splitcountfalse');
+        if (items.splitcount === 'true' && splitcountTrue) {
+            splitcountTrue.checked = true;
+        } else if (splitcountFalse) {
+            splitcountFalse.checked = true;
         }
-    })
-    $("#idrooturl").keyup(function(event) {
-        if (event.keyCode == 13) {
-            $("#save").click();
+        
+        // Restore alarm condition
+        const nonZeroCount = document.getElementById('nonZeroCount');
+        const alarmOnNewEntry = document.getElementById('alarmOnNewEntry');
+        if (items.alarmCondition === 'nonZeroCount' && nonZeroCount) {
+            nonZeroCount.checked = true;
+        } else if (alarmOnNewEntry) {
+            alarmOnNewEntry.checked = true;
         }
-    })
-    $("#idsecondaryq").keyup(function(event) {
-        if (event.keyCode == 13) {
-            $("#save").click();
+        
+        // Restore checkboxes
+        const disableAlarm = document.getElementById('disableAlarm');
+        const disablePoll = document.getElementById('disablePoll');
+        if (disableAlarm) disableAlarm.checked = items.disableAlarm === 'on';
+        if (disablePoll) disablePoll.checked = items.disablePoll === 'on';
+        
+        // Restore poll interval
+        let pollInterval = parseInt(items.pollInterval, 10);
+        if (isNaN(pollInterval) || pollInterval < 1) {
+            pollInterval = 5;
         }
-    })
-});
+        const pollIntervalInput = document.getElementById('pollInterval');
+        if (pollIntervalInput) pollIntervalInput.value = pollInterval.toString();
+        
+        // Restore URLs
+        const urlFields = {
+            'idrooturl': items.rooturl || '',
+            'idsecondaryq': items.secondary || '',
+            'idprimaryq': items.primary || ''
+        };
+        
+        Object.entries(urlFields).forEach(([fieldId, value]) => {
+            const field = document.getElementById(fieldId);
+            if (field) field.value = value;
+        });
+        
+    } catch (error) {
+        console.error('Error restoring options:', error);
+        showErrorMessage('Error loading saved options.');
+    }
+}
 
-document.getElementById('save').addEventListener('click', save_options);
-document.getElementById('clear').addEventListener('click', clear_options);
 
 

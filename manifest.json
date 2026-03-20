@@ -1,14 +1,13 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
 
   "name": "Servicenow Audio Alerts",
   "short_name": "Servicenow Audio Alerts",
   "description": "This extension alerts the user if a size of a monitored queue goes up.",
-  "version": "0.0.3",
+  "version": "0.0.4",
 
   "background": {
-    "scripts": ["js/jquery.min.js","js/background.js"],
-    "persistent": true
+    "service_worker": "js/background.js"
   },
     "browser_specific_settings": {
         "gecko": {
@@ -17,7 +16,7 @@
         }
     },
 
-  "browser_action": {
+  "action": {
 	"default_title": "Servicenow Audio Alerts",
     "default_icon": "images/ITSM50.png",
 	"default_popup": "options.html"
@@ -31,8 +30,10 @@
     "alarms",
 	"notifications",
 	"tabs",
-	"storage",
-	"idle",
+	"storage"
+  ],
+  
+  "host_permissions": [
 	"https://*.service-now.com/*"
   ]
 }

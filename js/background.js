@@ -1,426 +1,402 @@
-chrome.browserAction.setBadgeText({
-    text: "Wait"
-});
+// ServiceNow Audio Alerts - Modern Service Worker (Manifest V3)
+// Upgraded from legacy background.js for better security and performance
 
-var type,
-    priority,
-    $currentNumberTickets,
-    $currentNumberTask,
-    $currentNumberTotal,
-    $ticketNumberGlobal,
-    $idleState,
-    $rootURL,
-    $queueData,
-    $taskData,
-    newStamp = 0,
-    totalCount;
-let lastPollAt;
-let newList=[],oldList=[],difference=[];
+// Global state management
+const state = {
+    currentNumberTickets: 0,
+    currentNumberTask: 0,
+    currentNumberTotal: 0,
+    ticketNumberGlobal: null,
+    rootURL: null,
+    newStamp: 0,
+    newList: [],
+    oldList: [],
+    scheduledPollMinutes: null,
+    scheduledPollEnabled: null
+};
 
-let myStorage = window.localStorage;
-if ($idleState == undefined) {
-    $idleState = "active"
-}
-if ($currentNumberTickets == undefined) {
-    $currentNumberTickets = 0
-}
-if ($currentNumberTask == undefined) {
-    $currentNumberTask = 0
-}
-if ($currentNumberTotal == undefined) {
-    $currentNumberTotal = 0
-}
-
-chrome.runtime.onInstalled.addListener(function(details) {
-    if (details.reason == "install") {
-        try{
-            chrome.tabs.create({
-                'url': 'chrome://extensions/?options=' + chrome.runtime.id
+// Initialize service worker
+chrome.runtime.onInstalled.addListener(async (details) => {
+    if (details.reason === "install") {
+        try {
+            await chrome.tabs.create({
+                'url': `chrome://extensions/?options=${chrome.runtime.id}`
             });
+        } catch (e) {
+            console.log('Could not open options page:', e);
         }
-        catch(e){}
     }
-    getSavedData();
+    await getSavedData();
 });
 
-
-function createAlarm(duration){
-   
-
-    chrome.alarms.create("CheckTicketsAlarm", {
-        delayInMinutes: duration,
-        periodInMinutes: duration
-    });
-}
-createAlarm(1);
-
-chrome.alarms.onAlarm.addListener(function(info, tab) {
-    getSavedData();
+// Message listener for options page updates
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === "SNOW_AUDIO_ALERT_OPTIONS_UPDATED") {
+        getSavedData();
+    }
 });
 
-function resetAlarm(duration){
-    chrome.alarms.clear("CheckTicketsAlarm", function(){
-        createAlarm(duration);
-    }) 
-}
-function getSavedData() {
-console.log("HiHi")
-    chrome.storage.sync.get(['rooturl', 'secondary', 'primary', 'splitcount', 'disableAlarm', 'disablePoll', 'alarmCondition'], getQueues);
-    //  chrome.storage.sync.get(null, function (data) { console.info(data) });
+// Alarm listener for periodic polling
+chrome.alarms.onAlarm.addListener(async (info) => {
+    if (info.name === "CheckTicketsAlarm") {
+        await getSavedData();
+    }
+});
 
+// Notification click handler
+chrome.notifications.onClicked.addListener(async (notificationId) => {
+    if (notificationId === 'reminder' && state.ticketNumberGlobal) {
+        await openTicketInServiceNow(state.ticketNumberGlobal);
+    }
+});
+
+// Initialize badge
+chrome.action.setBadgeText({ text: "Wait" });
+
+// Core functions
+async function getSavedData() {
+    try {
+        const items = await chrome.storage.sync.get([
+            'rooturl', 'secondary', 'primary', 'splitcount', 
+            'disableAlarm', 'disablePoll', 'alarmCondition', 'pollInterval'
+        ]);
+        
+        await scheduleAlarmFromItems(items);
+        await getQueues(items);
+    } catch (error) {
+        console.error('Error getting saved data:', error);
+        chrome.action.setBadgeText({ text: "Err" });
+    }
 }
 
-function audioNotification(){
-    var mySound = new Audio('../sound/alarm-deep_groove.mp3');
-    mySound.play();
+function parsePollIntervalMinutes(rawValue) {
+    const minutes = parseInt(rawValue, 10);
+    return (isNaN(minutes) || minutes < 1) ? 5 : minutes;
 }
 
-function createNotification(){
-    var opt = {type: "basic",title: "Your Title",message: "Your message",iconUrl: "your_icon.png"}
-    chrome.notifications.create("notificationName",opt,function(){});
+async function scheduleAlarmFromItems(items) {
+    const pollEnabled = items.disablePoll !== "on";
+    const minutes = parsePollIntervalMinutes(items.pollInterval);
 
-    //include this line if you want to clear the notification after 5 seconds
-    setTimeout(function(){chrome.notifications.clear("notificationName",function(){});},5000);
-}
-function getlastPollAt() {
-    return     myStorage.getItem('lastPollAt')
-;
-}
-
-function getQueues(items) {
-console.log("HiHi")
-    if(items.disablePoll=="on"){
-        oldList=[];
-        difference=[];
-        newList=[];
+    // Only reconfigure alarms when state changes
+    if (state.scheduledPollEnabled === pollEnabled && state.scheduledPollMinutes === minutes) {
         return;
     }
-console.log("HiHi")
-    var primaryURL = changeURLforRESTAPI(items.primary),
-        secondaryURL = changeURLforRESTAPI(items.secondary),
-        count = 0;
-        $rootURL = items.rooturl;
-        newList=[];
-    
-    if (primaryURL != undefined && primaryURL != "") {
-        count += 1
-    }
-    if (secondaryURL != undefined && secondaryURL != "") {
-        count += 1
-    }
-    if (count > 0) {
-        if (count == 1) {
 
-            var data = getDataREST(primaryURL);
-            
-            totalCount = data['quantity'];
-            if ($currentNumberTotal < totalCount) {
-                $ticketNumberGlobal = data['number'];
-                showNotification(data['number'], data['description'], data['severity'])
+    // Clear existing alarm
+    await chrome.alarms.clear("CheckTicketsAlarm");
+
+    if (pollEnabled) {
+        await chrome.alarms.create("CheckTicketsAlarm", {
+            delayInMinutes: minutes,
+            periodInMinutes: minutes
+        });
+        state.scheduledPollEnabled = true;
+        state.scheduledPollMinutes = minutes;
+    } else {
+        state.scheduledPollEnabled = false;
+        state.scheduledPollMinutes = null;
+    }
+}
+
+async function getQueues(items) {
+    if (items.disablePoll === "on") {
+        state.oldList = [];
+        state.newList = [];
+        chrome.action.setBadgeText({ text: "Off" });
+        return;
+    }
+
+    const primaryURL = changeURLforRESTAPI(items.primary);
+    const secondaryURL = changeURLforRESTAPI(items.secondary);
+    state.rootURL = items.rooturl;
+    state.newList = [];
+
+    const urls = [];
+    if (primaryURL) urls.push(primaryURL);
+    if (secondaryURL) urls.push(secondaryURL);
+
+    if (urls.length === 0) {
+        chrome.action.setBadgeText({ text: "0" });
+        return;
+    }
+
+    try {
+        const results = await Promise.all(urls.map(url => getDataREST(url)));
+        
+        let totalCount = 0;
+        let shouldNotify = false;
+        let latestData = null;
+
+        if (urls.length === 1) {
+            const data = results[0];
+            totalCount = data.quantity;
+            if (state.currentNumberTotal < totalCount) {
+                state.ticketNumberGlobal = data.number;
+                await showNotification(data.number, data.description, data.severity);
+                shouldNotify = true;
             }
-            chrome.browserAction.setBadgeText({
-                text: ((data['quantity'])).toString()
-            });
-            $currentNumberTotal = totalCount
-                chrome.browserAction.setBadgeText({
-                    text: (totalCount).toString()
-                });
-
-            // handle request for 1 field
-        } else if (count == 2) {
-            var data1 = getDataREST(primaryURL);
-            var data2 = getDataREST(secondaryURL);
-            totalCount = (data1['quantity'] + data2['quantity']);
-            if ($currentNumberTotal < totalCount) {
-                if (data1.timestamp > data2.timestamp) {
-                    if (data1.timestamp > newStamp) {
-                        newStamp = data1.timestamp;
-                        $ticketNumberGlobal = data1['number'];
-                        showNotification(data1['number'], data1['description'], data1['severity'])
-                        if (items.splitcount == "true") {
-                            chrome.browserAction.setBadgeText({
-                                text: (data1['quantity']).toString() + " |" + (data2['quantity']).toString()
-                            });
-                        } else {
-                            chrome.browserAction.setBadgeText({
-                                text: ((data1['quantity']) + (data2['quantity'])).toString()
-                            });
-                        }
-                    }
-                } else {
-                    if (data2.timestamp > newStamp) {
-                        newStamp = data2.timestamp;
-                        $ticketNumberGlobal = data2['number'];
-                        showNotification(data2['number'], data2['description'], data2['severity'])
-
-                    }
+            latestData = data;
+        } else {
+            const [data1, data2] = results;
+            totalCount = data1.quantity + data2.quantity;
+            
+            if (state.currentNumberTotal < totalCount) {
+                latestData = data1.timestamp > data2.timestamp ? data1 : data2;
+                if (latestData.timestamp > state.newStamp) {
+                    state.newStamp = latestData.timestamp;
+                    state.ticketNumberGlobal = latestData.number;
+                    await showNotification(latestData.number, latestData.description, latestData.severity);
+                    shouldNotify = true;
                 }
             }
-            if (items.splitcount == "true") {
-                chrome.browserAction.setBadgeText({
-                    text: (data1['quantity']).toString() + " |" + (data2['quantity']).toString()
-                });
-            } else {
-                chrome.browserAction.setBadgeText({
-                    text: (totalCount).toString()
-                });
-            }
-            $currentNumberTotal = totalCount;
-            
-            //handle request for 2 fields
         }
 
-
-        if (totalCount >0 && items.alarmCondition =="nonZeroCount") {
-            if(items.disableAlarm!="on")
-                audioNotification();
+        // Update badge
+        if (urls.length === 2 && items.splitcount === "true") {
+            const badgeText = `${results[0].quantity} |${results[1].quantity}`;
+            chrome.action.setBadgeText({ text: badgeText });
+        } else {
+            chrome.action.setBadgeText({ text: totalCount.toString() });
         }
-        else{
-            difference = newList.filter(x => !oldList.includes(x));
-            if(difference.length>0){
-                if(items.disableAlarm!="on")
-                    audioNotification();
+
+        state.currentNumberTotal = totalCount;
+
+        // Handle audio notifications
+        if (items.disableAlarm !== "on") {
+            if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
+                await audioNotification();
+            } else if (items.alarmCondition !== "nonZeroCount") {
+                const difference = state.newList.filter(x => !state.oldList.includes(x));
+                if (difference.length > 0) {
+                    await audioNotification();
+                }
             }
         }
-        oldList=[]
-        difference=[]
-        oldList=oldList.concat(newList)
-        myStorage.setItem('lastPollAt', new Date());
-        console.log(new Date())
+
+        // Update lists for next comparison
+        state.oldList = [...state.newList];
         
-        
+        // Store last poll time
+        try {
+            const lastPollAt = new Date().toISOString();
+            await chrome.storage.local.set({ lastPollAt });
+        } catch (e) {
+            console.log('Could not store last poll time:', e);
+        }
+
+    } catch (error) {
+        console.error('Error processing queues:', error);
+        chrome.action.setBadgeText({ text: "Err" });
     }
 }
 
+async function getDataREST(url) {
+    try {
+        const response = await fetch(url + '&sysparm_limit=1000', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
 
-
-
-function getDataREST(url) {
-    var $BadgeCount
-    var timestamps = [];
-    var oldest = [];
-    var dataOutput;
-var thisQData=[]
-console.log(url)
-    $.ajax({
-        type: "get",
-        url: url,
-        async: false,
-        dataType: "json",
-        success: function(data) {
-            thisQData= data.records;
-        },
-        error: function(xhr, status) {
-            chrome.browserAction.setBadgeText({
-                text: "Errr"
-            });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-    })
-    var $qTickets = thisQData.length;
-    var max = 0;
-console.log(thisQData)
-console.log(typeof thisQData)
-console.log($qTickets)
-    if ($qTickets > 0) {
-        thisQData.forEach(function(record) {
-            var $qticketNumber = record.number;
-            newList.push($qticketNumber)
-            if ($qticketNumber.indexOf("TASK") != -1) {
-                var $qseverity = "10";
-            } else if ($qticketNumber.indexOf("CHG") != -1) {
-                var $qseverity = "15";
-            } else {
-                var $qseverity = record.priority;
+
+        const data = await response.json();
+        const records = data.records || [];
+
+        if (records.length === 0) {
+            return {
+                quantity: 0,
+                number: null,
+                severity: null,
+                description: null,
+                timestamp: 0
+            };
+        }
+
+        let maxTimestamp = 0;
+        let latestRecord = null;
+
+        records.forEach(record => {
+            const ticketNumber = record.number;
+            state.newList.push(ticketNumber);
+
+            let severity = record.priority || "5";
+            if (ticketNumber.includes("TASK")) {
+                severity = "10";
+            } else if (ticketNumber.includes("CHG")) {
+                severity = "15";
             }
-            var $qticketDescription = record.short_description;
-            var time =record.sys_updated_on;
-            var d1 = new Date(time);
-            var qtime = parseInt(d1.getTime());
-            var dataOutput1 = {
-                "quantity": $qTickets,
-                "number": $qticketNumber,
-                "severity": $qseverity,
-                "description": $qticketDescription,
-                "timestamp": qtime
+
+            const timestamp = record.sys_updated_on ? new Date(record.sys_updated_on).getTime() : 0;
+
+            if (timestamp > maxTimestamp) {
+                maxTimestamp = timestamp;
+                latestRecord = {
+                    quantity: records.length,
+                    number: ticketNumber,
+                    severity: severity,
+                    description: record.short_description || 'No description',
+                    timestamp: timestamp
+                };
             }
-            if (qtime > max) {
-                max = qtime;
-                dataOutput = dataOutput1;
-                oldest.push(max);
-            }
-        })
+        });
+
+        return latestRecord || {
+            quantity: records.length,
+            number: records[0]?.number || null,
+            severity: records[0]?.priority || "5",
+            description: records[0]?.short_description || 'No description',
+            timestamp: maxTimestamp
+        };
+
+    } catch (error) {
+        console.error('Error fetching data from ServiceNow:', error);
+        chrome.action.setBadgeText({ text: "Err" });
+        return {
+            quantity: 0,
+            number: null,
+            severity: null,
+            description: null,
+            timestamp: 0
+        };
+    }
+}
+
+async function audioNotification() {
+    try {
+        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
+        const audio = new Audio(audioUrl);
+        audio.volume = 0.5;
+        await audio.play();
+    } catch (error) {
+        console.log('Could not play audio notification:', error);
+    }
+}
+
+async function showNotification(ticketNumber, ticketDescription, severity) {
+    if (!ticketNumber) return;
+
+    let imageName = "ITSM128.png";
+    const severityMap = {
+        "1": "Sev1.png",
+        "2": "Sev2.png", 
+        "3": "Sev3.png",
+        "4": "Sev4.png",
+        "10": "ServiceRequest.png",
+        "15": "change.png"
+    };
+
+    if (severityMap[severity]) {
+        imageName = severityMap[severity];
+    }
+
+    try {
+        await chrome.notifications.create('reminder', {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL(`images/${imageName}`),
+            title: ticketNumber,
+            message: ticketDescription || 'New ServiceNow item'
+        });
+
+        // Auto-clear notification after 5 seconds
+        setTimeout(async () => {
+            await chrome.notifications.clear('reminder');
+        }, 5000);
+    } catch (error) {
+        console.error('Error creating notification:', error);
+    }
+}
+
+async function openTicketInServiceNow(ticketNumber) {
+    if (!ticketNumber || !state.rootURL) return;
+
+    const prefix = ticketNumber.substring(0, 3).toUpperCase();
+    let urlPath = '';
+
+    const urlMap = {
+        'TAS': '/sc_task.do',
+        'INC': '/incident.do',
+        'CSP': '/sn_customer_case.do',
+        'CSR': '/sn_customer_case.do',
+        'REQ': '/sc_request.do',
+        'CHG': '/change_request.do',
+        'RIT': '/sc_req_item.do',
+        'CAL': '/new_call.do'
+    };
+
+    if (urlMap[prefix]) {
+        urlPath = `${urlMap[prefix]}?sys_id=${ticketNumber}`;
     } else {
-        var dataOutput1 = {
-            "quantity": 0,
-            "number": null,
-            "severity": null,
-            "description": null,
-            "timestamp": 0
-        }
-        
-        dataOutput = dataOutput1;
-
+        urlPath = `/task_list.do?sysparm_query=numberLIKE${ticketNumber}&sysparm_first_row=1&sysparm_view=`;
     }
-    var output = Math.max(oldest);
-    return dataOutput;
-}
 
+    const fullUrl = `${state.rootURL}${urlPath}`;
 
-
-
-
-function showNotification(ticketNumber, ticketDescription, severity) {
-    var imageName
-    switch (severity) {
-        case "1":
-            imageName = "Sev1.png"
-            break;
-        case "2":
-            imageName = "Sev2.png"
-            break;
-        case "3":
-            imageName = "Sev3.png"
-            break;
-        case "4":
-            imageName = "Sev4.png"
-            break;
-        case "10":
-            imageName = "ServiceRequest.png"
-            break;
-        case "15":
-            imageName = "change.png"
-            break;
-        default:
-            imageName = "ITSM128.png"
+    try {
+        await chrome.tabs.create({ url: fullUrl });
+    } catch (error) {
+        console.error('Error opening ServiceNow tab:', error);
     }
-    chrome.notifications.create('reminder', {
-        type: 'basic',
-        iconUrl: 'images/' + imageName,
-        title: ticketNumber,
-        message: ticketDescription
-    }, function(notificationId) {});
-    
-
-    //include this line if you want to clear the notification after 5 seconds
-    setTimeout(function(){chrome.notifications.clear("reminder",function(){});},5000);
 }
 
-
-chrome.notifications.onClicked.addListener(notificationClicked);
-
-function notificationClicked() {
-	var urlTicketSearch;
-	console.log($ticketNumberGlobal.substring(0,3));
-	switch ($ticketNumberGlobal.substring(0,3)) {
-			case "TAS":
-					urlTicketSearch = $rootURL + "/sc_task.do?sys_id=" + $ticketNumberGlobal
-					break;
-			case "INC":
-					urlTicketSearch = $rootURL + "/incident.do?sys_id=" + $ticketNumberGlobal
-					break;
-			case "CSP":
-					urlTicketSearch = $rootURL + "/sn_customer_case.do?sys_id=" + $ticketNumberGlobal
-					break;
-			case "CSR":
-					urlTicketSearch = $rootURL + "/sn_customer_case.do?sys_id=" + $ticketNumberGlobal
-					break;
-            case "REQ":
-					urlTicketSearch = $rootURL + "/sc_request.do?sys_id=" + $ticketNumberGlobal
-					break;
-			case "CHG":
-					urlTicketSearch = $rootURL + "/change_request.do?sys_id=" + $ticketNumberGlobal
-					break;
-			case "RIT":
-					urlTicketSearch = $rootURL + "/sc_req_item.do?sys_id=" + $ticketNumberGlobal
-					break;
-			case "CAL":
-					urlTicketSearch = $rootURL + "/new_call.do?sys_id=" + $ticketNumberGlobal
-					break;
-			default:
-					urlTicketSearch = $rootURL + "/task_list.do?sysparm_query=numberLIKE" + $ticketNumberGlobal + "&sysparm_first_row=1&sysparm_view="
-	}
-
-	chrome.tabs.create({
-	        'url': urlTicketSearch
-	    })
-
-}
-
-
-
-
-
-function hasValue(item) {
-    if ((item != undefined) && (item != NaN) && (item != null)) {
-        return true
+function validateURL(url) {
+    if (!url || typeof url !== 'string') return false;
+    try {
+        const urlObj = new URL(url);
+        return urlObj.protocol === 'https:' && urlObj.hostname.includes('service-now.com');
+    } catch {
+        return false;
     }
-    return false
 }
-
-
-
-
-
-
-function removeParam(key, sourceURL) {
-    var rtn = sourceURL.split("?")[0],
-        param,
-        params_arr = [],
-        queryString = (sourceURL.indexOf("?") !== -1) ? sourceURL.split("?")[1] : "";
-    if (queryString !== "") {
-        params_arr = queryString.split("&");
-        for (var i = params_arr.length - 1; i >= 0; i -= 1) {
-            param = params_arr[i].split("=")[0];
-            if (param === key) {
-                params_arr.splice(i, 1);
-            }
-        }
-        rtn = rtn + "?" + params_arr.join("&");
-    }
-    return rtn;
-}
-
 
 function changeURLforRESTAPI(url) {
+    if (!url || url === "") return undefined;
 
-    if(url=="" || url==undefined)
+    try {
+        const urlObj = new URL(url);
+        
+        // Validate it's a ServiceNow URL
+        if (!urlObj.hostname.includes('service-now.com')) {
+            console.warn('URL does not appear to be a ServiceNow instance:', url);
+            return undefined;
+        }
+
+        // Convert to REST API format
+        let restURL = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}${urlObj.search}`;
+        
+        // Remove unwanted parameters
+        restURL = removeParam("sysparm_fields", restURL);
+        restURL = removeParam("sysparm_view", restURL);
+        
+        // Add JSON and required fields
+        const separator = restURL.includes('?') ? '&' : '?';
+        restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on`;
+        
+        return restURL;
+    } catch (error) {
+        console.error('Error processing URL:', error);
         return undefined;
-    // Created a URL object using URL() method 
-    var parser = new URL(url); 
-        
-    // Protocol used in URL 
-    let protocol=(parser.protocol); 
-    
-    // Host of the URL 
-    let host=(parser.host); 
-    
-    // Port in the URL 
-    let port=(parser.port); 
-    
-    // Hostname of the URL 
-    let pathname=(parser.pathname) 
-
-    // Search in the URL 
-    let search=(parser.search); 
-        
-    /*
-     * Note: Port will be included in host. So while joining back, dont include port
-     */
-
-    if(protocol!="")
-        protocol=protocol+"//";
-    //pathname="/api/now/table"+pathname.replace("_list.do","");
-    
-    // Search parameter in the URL 
-    let restURL=`${protocol}//${host}${pathname}${search}`;
-
-    restURL=removeParam("sysparm_fields",restURL)
-    restURL=removeParam("sysparm_view",restURL)
-    restURL=restURL+"&JSONv2&sysparm_fields=number%2Cseverity%2Cshort_description%2Cpriority%2Csys_id%2Csys_updated_on";
-    return restURL;
+    }
 }
 
-
-chrome.idle.onStateChanged.addListener(function(state) {
-    $idleState = state
-})
+function removeParam(key, sourceURL) {
+    try {
+        const url = new URL(sourceURL);
+        url.searchParams.delete(key);
+        return url.toString();
+    } catch {
+        // Fallback to string manipulation if URL parsing fails
+        const rtn = sourceURL.split("?")[0];
+        const queryString = sourceURL.includes("?") ? sourceURL.split("?")[1] : "";
+        
+        if (!queryString) return rtn;
+        
+        const params = queryString.split("&").filter(param => !param.startsWith(key + "="));
+        return params.length > 0 ? rtn + "?" + params.join("&") : rtn;
+    }
+}
