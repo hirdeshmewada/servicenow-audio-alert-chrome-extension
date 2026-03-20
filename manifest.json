@@ -30,7 +30,8 @@
     "alarms",
 	"notifications",
 	"tabs",
-	"storage"
+	"storage",
+	"offscreen"
   ],
   
   "host_permissions": [

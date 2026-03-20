@@ -163,15 +163,25 @@ async function getQueues(items) {
         state.currentNumberTotal = totalCount;
 
         // Handle audio notifications
+        console.log('Audio check - disableAlarm:', items.disableAlarm, 'alarmCondition:', items.alarmCondition, 'totalCount:', totalCount);
+        console.log('Old list:', state.oldList, 'New list:', state.newList);
+        
         if (items.disableAlarm !== "on") {
             if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
+                console.log('Triggering audio - nonZeroCount condition met');
                 await audioNotification();
             } else if (items.alarmCondition !== "nonZeroCount") {
                 const difference = state.newList.filter(x => !state.oldList.includes(x));
+                console.log('New tickets detected:', difference);
                 if (difference.length > 0) {
+                    console.log('Triggering audio - new tickets condition met');
                     await audioNotification();
                 }
+            } else {
+                console.log('No audio trigger - conditions not met');
             }
+        } else {
+            console.log('Audio disabled');
         }
 
         // Update lists for next comparison
@@ -269,10 +279,23 @@ async function getDataREST(url) {
 
 async function audioNotification() {
     try {
-        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
-        const audio = new Audio(audioUrl);
-        audio.volume = 0.5;
-        await audio.play();
+        // Create offscreen document if it doesn't exist
+        const existingContexts = await chrome.runtime.getContexts({
+            contextTypes: ['OFFSCREEN_DOCUMENT'],
+            documentUrls: [chrome.runtime.getURL('offscreen.html')]
+        });
+
+        if (existingContexts.length === 0) {
+            await chrome.offscreen.createDocument({
+                url: 'offscreen.html',
+                reasons: ['AUDIO_PLAYBACK'],
+                justification: 'Playing audio notifications for ServiceNow updates'
+            });
+        }
+
+        // Send message to offscreen document to play audio
+        await chrome.runtime.sendMessage({ type: "PLAY_AUDIO" });
+        console.log('Audio notification sent to offscreen document');
     } catch (error) {
         console.log('Could not play audio notification:', error);
     }

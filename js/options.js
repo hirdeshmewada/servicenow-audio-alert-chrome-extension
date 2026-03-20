@@ -296,16 +296,27 @@ async function restoreOptions() {
 // Test audio notification function
 async function testAudioNotification() {
     try {
-        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
-        const audio = new Audio(audioUrl);
-        audio.volume = 0.5;
+        // Create offscreen document if it doesn't exist (same logic as background)
+        const existingContexts = await chrome.runtime.getContexts({
+            contextTypes: ['OFFSCREEN_DOCUMENT'],
+            documentUrls: [chrome.runtime.getURL('offscreen.html')]
+        });
+
+        if (existingContexts.length === 0) {
+            await chrome.offscreen.createDocument({
+                url: 'offscreen.html',
+                reasons: ['AUDIO_PLAYBACK'],
+                justification: 'Playing audio notifications for ServiceNow updates'
+            });
+        }
+
+        // Send message to offscreen document to play audio (same as background)
+        await chrome.runtime.sendMessage({ type: "PLAY_AUDIO" });
         
         // Show feedback message
-        showSuccessMessage('🔊 Playing test audio...');
+        showSuccessMessage('🔊 Playing test audio via offscreen document...');
         
-        await audio.play();
-        
-        // Show success message after audio plays
+        // Show success message after a short delay
         setTimeout(() => {
             showSuccessMessage('✅ Audio test completed successfully!');
         }, 1000);
