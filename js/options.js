@@ -31,13 +31,16 @@ async function testAudioNotification() {
     try {
         showSuccessMessage('Testing audio...');
         
-        // Send message to background to test audio
-        chrome.runtime.sendMessage({ type: 'TEST_AUDIO' }, (response) => {
-            if (response && response.success) {
-                showSuccessMessage('✅ Audio test successful!');
-            } else {
-                showErrorMessage('❌ Audio test failed: ' + (response.error || 'Unknown error'));
-            }
+        // Set user interaction flag to allow audio playback
+        chrome.runtime.sendMessage({ type: 'SET_USER_INTERACTION' }, () => {
+            // Send message to background to test audio
+            chrome.runtime.sendMessage({ type: 'TEST_AUDIO' }, (response) => {
+                if (response && response.success) {
+                    showSuccessMessage('✅ Audio test successful!');
+                } else {
+                    showErrorMessage('❌ Audio test failed: ' + (response.error || 'Unknown error'));
+                }
+            });
         });
         
     } catch (error) {
