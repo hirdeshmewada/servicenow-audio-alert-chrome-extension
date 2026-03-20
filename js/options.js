@@ -6,9 +6,10 @@ let currentTab = 'tickets';
 let isMonitoring = false;
 let isMuted = false;
 let ticketData = {
-    queueA: { count: 0, url: '', tickets: [] },
-    queueB: { count: 0, url: '', tickets: [] },
+    queueA: { count: 0, url: '', tickets: [], previousCount: 0 },
+    queueB: { count: 0, url: '', tickets: [], previousCount: 0 },
     total: 0,
+    previousTotal: 0,
     lastPoll: 'Never'
 };
 
@@ -276,14 +277,32 @@ function updateQueueUrls(data) {
     }
 }
 
-// Get last poll time from storage
+// Get last poll time from storage and convert to Indian time
 async function updateLastPollTime() {
     try {
         const result = await chrome.storage.local.get(['lastPollAt']);
         const lastPollElement = document.getElementById('lastPollAt');
         if (lastPollElement) {
-            lastPollElement.textContent = result.lastPollAt || 'Never';
-            ticketData.lastPoll = result.lastPollAt || 'Never';
+            if (result.lastPollAt) {
+                // Convert to Indian time (IST = UTC+5:30)
+                const pollDate = new Date(result.lastPollAt);
+                const istTime = new Date(pollDate.getTime() + (5.5 * 60 * 60 * 1000) + (pollDate.getTimezoneOffset() * 60 * 1000));
+                const formattedTime = istTime.toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+                lastPollElement.textContent = formattedTime;
+                ticketData.lastPoll = formattedTime;
+            } else {
+                lastPollElement.textContent = 'Never';
+                ticketData.lastPoll = 'Never';
+            }
         }
     } catch (error) {
         console.error('Error getting last poll time:', error);
@@ -418,13 +437,76 @@ function updateTicketCounts(queueACount, queueBCount, totalCount) {
     const queueBCountElement = document.getElementById('queueBCount');
     const totalCountElement = document.getElementById('totalCount');
     
-    if (queueACountElement) queueACountElement.textContent = queueACount;
-    if (queueBCountElement) queueBCountElement.textContent = queueBCount;
+    // Also update badge counts in queue details
+    const queueACountBadge = document.getElementById('queueACountBadge');
+    const queueBCountBadge = document.getElementById('queueBCountBadge');
+    
+    if (queueACountElement) {
+        queueACountElement.textContent = queueACount;
+        if (queueACountBadge) queueACountBadge.textContent = queueACount;
+    }
+    
+    if (queueBCountElement) {
+        queueBCountElement.textContent = queueBCount;
+        if (queueBCountBadge) queueBCountBadge.textContent = queueBCount;
+    }
+    
     if (totalCountElement) totalCountElement.textContent = totalCount;
     
+    // Update trends
+    updateTrends(queueACount, queueBCount, totalCount);
+    
+    // Update ticket data
     ticketData.queueA.count = queueACount;
     ticketData.queueB.count = queueBCount;
     ticketData.total = totalCount;
+}
+
+// Update trend indicators
+function updateTrends(queueACount, queueBCount, totalCount) {
+    const queueATrend = document.getElementById('queueATrend');
+    const queueBTrend = document.getElementById('queueBTrend');
+    const totalTrend = document.getElementById('totalTrend');
+    
+    // Queue A trend
+    if (queueATrend) {
+        const prevCount = ticketData.queueA.previousCount;
+        queueATrend.textContent = getTrendIcon(queueACount, prevCount);
+        queueATrend.className = `analytics-trend ${getTrendClass(queueACount, prevCount)}`;
+    }
+    
+    // Queue B trend
+    if (queueBTrend) {
+        const prevCount = ticketData.queueB.previousCount;
+        queueBTrend.textContent = getTrendIcon(queueBCount, prevCount);
+        queueBTrend.className = `analytics-trend ${getTrendClass(queueBCount, prevCount)}`;
+    }
+    
+    // Total trend
+    if (totalTrend) {
+        const prevTotal = ticketData.previousTotal;
+        totalTrend.textContent = getTrendIcon(totalCount, prevTotal);
+        totalTrend.className = `analytics-trend ${getTrendClass(totalCount, prevTotal)}`;
+    }
+    
+    // Update previous counts for next comparison
+    ticketData.queueA.previousCount = ticketData.queueA.count;
+    ticketData.queueB.previousCount = ticketData.queueB.count;
+    ticketData.previousTotal = ticketData.total;
+}
+
+// Get trend icon based on count change
+function getTrendIcon(current, previous) {
+    if (current > previous) return '↑';
+    if (current < previous) return '↓';
+    return '→';
+}
+
+// Get trend class based on count change
+function getTrendClass(current, previous) {
+    if (current > previous) return 'up';
+    if (current < previous) return 'down';
+    return 'neutral';
 }
 
 // Update ticket list

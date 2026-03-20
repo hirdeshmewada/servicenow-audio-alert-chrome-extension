@@ -389,12 +389,78 @@
             border: 1px solid #fecaca;
         }
 
-        /* Empty State */
-        .empty-state {
+        /* Analytics Grid - ServiceNow Style */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .analytics-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
             text-align: center;
-            padding: 24px;
-            color: #6b7280;
+            position: relative;
+        }
+
+        .analytics-item.total {
+            grid-column: 1 / -1;
+            background: #e3f2fd;
+            border-color: #bbdefb;
+        }
+
+        .analytics-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .analytics-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #2e3e50;
+            margin-bottom: 4px;
+        }
+
+        .analytics-trend {
             font-size: 14px;
+            font-weight: 600;
+        }
+
+        .analytics-trend.up {
+            color: #28a745;
+        }
+
+        .analytics-trend.down {
+            color: #dc3545;
+        }
+
+        .analytics-trend.neutral {
+            color: #6c757d;
+        }
+
+        /* Status Info */
+        .status-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .poll-info {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        /* Queue Label */
+        .queue-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #2e3e50;
+            margin-bottom: 2px;
         }
 
         /* Total Count - ServiceNow Style */
@@ -454,43 +520,54 @@
             <!-- Status Card -->
             <div class="card">
                 <div class="card-title">Status</div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <span>Monitoring Status:</span>
-                    <span id="monitoringStatus" class="status-badge status-stopped">Stopped</span>
-                </div>
-                <div style="font-size: 12px; color: #6b7280;">
-                    <strong>Last Poll:</strong> <span id="lastPollAt">Never</span>
+                <div class="status-info">
+                    <span class="status-badge" id="monitoringStatus">Active</span>
+                    <span class="poll-info">Last Poll: <span id="lastPollAt">Never</span></span>
                 </div>
             </div>
 
-            <!-- Queue A -->
             <div class="card">
-                <div class="card-title">Queue A</div>
-                <div class="queue-info">
-                    <div class="queue-url" id="queueAUrl">Not configured</div>
-                    <div class="queue-count" id="queueACount">0</div>
+                <div class="card-title">Queue Analytics</div>
+                <div class="analytics-grid">
+                    <div class="analytics-item">
+                        <div class="analytics-label">Queue A</div>
+                        <div class="analytics-value" id="queueACount">0</div>
+                        <div class="analytics-trend" id="queueATrend">→</div>
+                    </div>
+                    <div class="analytics-item">
+                        <div class="analytics-label">Queue B</div>
+                        <div class="analytics-value" id="queueBCount">0</div>
+                        <div class="analytics-trend" id="queueBTrend">→</div>
+                    </div>
+                    <div class="analytics-item total">
+                        <div class="analytics-label">Total</div>
+                        <div class="analytics-value" id="totalCount">0</div>
+                        <div class="analytics-trend" id="totalTrend">→</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Queue B -->
             <div class="card">
-                <div class="card-title">Queue B (Optional)</div>
+                <div class="card-title">Queue Details</div>
                 <div class="queue-info">
-                    <div class="queue-url" id="queueBUrl">Not configured</div>
-                    <div class="queue-count" id="queueBCount">0</div>
+                    <div>
+                        <div class="queue-label">Queue A</div>
+                        <div class="queue-url" id="queueAUrl">Not configured</div>
+                    </div>
+                    <div class="queue-count" id="queueACountBadge">0</div>
+                </div>
+                <div class="queue-info">
+                    <div>
+                        <div class="queue-label">Queue B (Optional)</div>
+                        <div class="queue-url" id="queueBUrl">Not configured</div>
+                    </div>
+                    <div class="queue-count" id="queueBCountBadge">0</div>
                 </div>
             </div>
 
-            <!-- Total Count -->
-            <div class="total-count">
-                <div class="total-count-label">Total Tickets</div>
-                <div class="total-count-value" id="totalCount">0</div>
-            </div>
-
-            <!-- Recent Tickets -->
             <div class="card">
                 <div class="card-title">Recent Tickets</div>
-                <div id="ticketList" class="ticket-list">
+                <div class="ticket-list" id="ticketList">
                     <div class="empty-state">No tickets found</div>
                 </div>
             </div>
