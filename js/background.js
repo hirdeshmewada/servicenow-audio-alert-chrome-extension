@@ -33,6 +33,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.type === "SNOW_AUDIO_ALERT_OPTIONS_UPDATED") {
         getSavedData();
+    } else if (msg && msg.type === "TEST_AUDIO") {
+        // Handle test audio request
+        audioNotification().then(() => {
+            sendResponse({ success: true });
+        }).catch(error => {
+            console.error('Test audio failed:', error);
+            sendResponse({ success: false, error: error.message });
+        });
+        return true; // Keep message channel open for async response
     }
 });
 
@@ -269,12 +278,73 @@ async function getDataREST(url) {
 
 async function audioNotification() {
     try {
+        console.log('🔊 Attempting to play audio notification...');
+        
+        // Method 1: Try direct Audio playback
         const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
+        console.log('🎵 Audio URL:', audioUrl);
+        
         const audio = new Audio(audioUrl);
-        audio.volume = 0.5;
-        await audio.play();
+        audio.volume = 0.7;
+        audio.preload = 'auto';
+        
+        // Add event listeners for debugging
+        audio.addEventListener('loadstart', () => console.log('🎵 Audio loading started'));
+        audio.addEventListener('canplay', () => console.log('🎵 Audio can play'));
+        audio.addEventListener('play', () => console.log('🎵 Audio playing'));
+        audio.addEventListener('ended', () => console.log('🎵 Audio ended'));
+        audio.addEventListener('error', (e) => {
+            console.error('🎵 Audio error:', e);
+            // Try fallback method
+            audioNotificationFallback();
+        });
+        
+        // Try to play
+        const playPromise = audio.play();
+        
+        if (playPromise !== undefined) {
+            await playPromise;
+            console.log('✅ Audio notification played successfully');
+        }
+        
     } catch (error) {
-        console.log('Could not play audio notification:', error);
+        console.error('❌ Primary audio method failed:', error);
+        // Try fallback method
+        await audioNotificationFallback();
+    }
+}
+
+// Fallback audio method
+async function audioNotificationFallback() {
+    try {
+        console.log('🔄 Trying fallback audio method...');
+        
+        // Method 2: Create audio in a different way
+        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
+        const audio = new Audio();
+        audio.src = audioUrl;
+        audio.volume = 0.7;
+        
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            await playPromise;
+            console.log('✅ Fallback audio method worked');
+        }
+        
+    } catch (fallbackError) {
+        console.error('❌ All audio methods failed:', fallbackError);
+        
+        // Method 3: Last resort - try to create notification instead
+        try {
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: chrome.runtime.getURL('images/ITSM128.png'),
+                title: '⚠️ Audio Alert',
+                message: 'ServiceNow alert - audio could not play'
+            });
+        } catch (notificationError) {
+            console.error('❌ Even notification failed:', notificationError);
+        }
     }
 }
 
