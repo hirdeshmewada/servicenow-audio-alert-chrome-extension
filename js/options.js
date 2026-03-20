@@ -1,5 +1,16 @@
 // ServiceNow Audio Alerts - Modern Options Script (Manifest V3)
-// Upgraded from legacy options.js for better security and performance
+// Redesigned for clean 3-tab UI
+
+// Global state
+let currentTab = 'tickets';
+let isMonitoring = false;
+let isMuted = false;
+let ticketData = {
+    queueA: { count: 0, url: '', tickets: [] },
+    queueB: { count: 0, url: '', tickets: [] },
+    total: 0,
+    lastPoll: 'Never'
+};
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -7,39 +18,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     await restoreOptions();
     updateLastPollTime();
+    startRealTimeUpdates();
 });
 
 async function initializeOptions() {
     try {
-        // Set popup window size
-        const currentWindow = await chrome.windows.getCurrent();
-        const htmlStyle = document.querySelector('html').style;
-        htmlStyle.width = (currentWindow.width * 0.25) + 'px';
-        
         // Hide status message initially
         const status = document.getElementById('status');
         if (status) status.style.display = 'none';
-        
-        // Hide url field if it exists
-        const urlField = document.getElementById('urlfield');
-        if (urlField) urlField.style.display = 'none';
     } catch (error) {
         console.error('Error initializing options:', error);
     }
 }
 
 function setupEventListeners() {
+    // Tab switching
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', (e) => switchTab(e.target.dataset.tab));
+    });
+
+    // Header controls
+    const startStopBtn = document.getElementById('startStopBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    
+    if (startStopBtn) startStopBtn.addEventListener('click', toggleMonitoring);
+    if (muteBtn) muteBtn.addEventListener('click', toggleMute);
+
     // Button listeners
     const saveBtn = document.getElementById('save');
-    const clearBtn = document.getElementById('clear');
     const testAudioBtn = document.getElementById('testAudio');
     
     if (saveBtn) saveBtn.addEventListener('click', saveOptions);
-    if (clearBtn) clearBtn.addEventListener('click', clearOptions);
     if (testAudioBtn) testAudioBtn.addEventListener('click', testAudioNotification);
     
     // Input field listeners for auto-save
-    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq'];
+    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'pollInterval'];
     autoSaveFields.forEach(fieldId => {
         const field = document.getElementById(fieldId);
         if (field) {
@@ -51,38 +65,147 @@ function setupEventListeners() {
             });
         }
     });
-    
-    // Clicker functionality for toggle views
-    const clickers = document.querySelectorAll('.clicker');
-    clickers.forEach(clicker => {
-        clicker.addEventListener('click', (event) => {
-            const classes = event.currentTarget.className.split(/\s+/);
-            const lastClass = classes[classes.length - 1];
-            toggleView(lastClass);
-        });
+
+    // Toggle listeners for immediate feedback
+    const toggleFields = ['disableAlarm', 'disablePoll'];
+    toggleFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('change', () => {
+                saveOptions();
+                updateMonitoringStatus();
+            });
+        }
     });
+
+    // Radio button listeners
+    const radioButtons = document.querySelectorAll('input[name="alarmCondition"]');
+    radioButtons.forEach(radio => {
+        radio.addEventListener('change', saveOptions);
+    });
+
+    // Select dropdown listener
+    const splitCountSelect = document.getElementById('splitcount');
+    if (splitCountSelect) {
+        splitCountSelect.addEventListener('change', saveOptions);
+    }
 }
 
-function toggleView(className) {
-    const prefix = className.charAt(0);
-    let selector;
+function switchTab(tabName) {
+    // Update tab buttons
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.tab === tabName) {
+            tab.classList.add('active');
+        }
+    });
+
+    // Update tab content
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabContents.forEach(content => {
+        content.classList.remove('active');
+    });
     
-    if (prefix === 'q') {
-        selector = `.queue${className.slice(-1)}`;
-    } else if (prefix === 'l') {
-        selector = `.list${className.slice(-1)}`;
+    const activeContent = document.getElementById(tabName);
+    if (activeContent) {
+        activeContent.classList.add('active');
+    }
+
+    currentTab = tabName;
+}
+
+async function toggleMonitoring() {
+    isMonitoring = !isMonitoring;
+    updateMonitoringButton();
+    updateMonitoringStatus();
+    
+    if (isMonitoring) {
+        showSuccessMessage('🟢 Monitoring started');
+        // Trigger background script to start polling
+        chrome.runtime.sendMessage({ type: 'SNOW_AUDIO_ALERT_OPTIONS_UPDATED' });
     } else {
-        selector = `.myHide${className.slice(-1)}`;
+        showSuccessMessage('🔴 Monitoring stopped');
     }
     
-    const element = document.querySelector(selector);
-    if (element) {
-        element.style.display = element.style.display === 'none' ? 'block' : 'none';
+    // Save monitoring state
+    await chrome.storage.local.set({ isMonitoring });
+}
+
+async function toggleMute() {
+    isMuted = !isMuted;
+    updateMuteButton();
+    
+    if (isMuted) {
+        showSuccessMessage('🔇 Audio muted');
+    } else {
+        showSuccessMessage('🔊 Audio unmuted');
+    }
+    
+    // Save mute state and update disable alarm setting
+    const disableAlarmCheckbox = document.getElementById('disableAlarm');
+    if (disableAlarmCheckbox) {
+        disableAlarmCheckbox.checked = isMuted;
+        await saveOptions();
+    }
+    
+    await chrome.storage.local.set({ isMuted });
+}
+
+function updateMonitoringButton() {
+    const startStopIcon = document.getElementById('startStopIcon');
+    const startStopBtn = document.getElementById('startStopBtn');
+    
+    if (startStopIcon && startStopBtn) {
+        if (isMonitoring) {
+            startStopIcon.textContent = '⏸️';
+            startStopBtn.classList.add('active');
+            startStopBtn.title = 'Stop Monitoring';
+        } else {
+            startStopIcon.textContent = '▶️';
+            startStopBtn.classList.remove('active');
+            startStopBtn.title = 'Start Monitoring';
+        }
     }
 }
 
+function updateMuteButton() {
+    const muteIcon = document.getElementById('muteIcon');
+    const muteBtn = document.getElementById('muteBtn');
+    
+    if (muteIcon && muteBtn) {
+        if (isMuted) {
+            muteIcon.textContent = '🔇';
+            muteBtn.classList.add('active');
+            muteBtn.title = 'Unmute';
+        } else {
+            muteIcon.textContent = '🔊';
+            muteBtn.classList.remove('active');
+            muteBtn.title = 'Mute';
+        }
+    }
+}
 
-
+function updateMonitoringStatus() {
+    const statusElement = document.getElementById('monitoringStatus');
+    const disablePollCheckbox = document.getElementById('disablePoll');
+    
+    if (statusElement) {
+        if (disablePollCheckbox && disablePollCheckbox.checked) {
+            statusElement.textContent = 'Stopped';
+            statusElement.className = 'status-badge status-stopped';
+            isMonitoring = false;
+        } else if (isMonitoring) {
+            statusElement.textContent = 'Active';
+            statusElement.className = 'status-badge status-active';
+        } else {
+            statusElement.textContent = 'Stopped';
+            statusElement.className = 'status-badge status-stopped';
+        }
+    }
+    
+    updateMonitoringButton();
+}
 
 // URL validation function
 function validateServiceNowURL(url) {
@@ -129,7 +252,7 @@ async function saveOptions() {
             rooturl: rooturl.trim(),
             secondary: secondary.trim(),
             pollInterval: pollInterval,
-            splitcount: document.querySelector("input[name='splitcount']:checked")?.value || 'false',
+            splitcount: document.getElementById('splitcount')?.value || 'false',
             disableAlarm: document.getElementById('disableAlarm')?.checked ? 'on' : 'off',
             disablePoll: document.getElementById('disablePoll')?.checked ? 'on' : 'off',
             alarmCondition: document.querySelector("input[name='alarmCondition']:checked")?.value || 'nonZeroCount'
@@ -137,16 +260,45 @@ async function saveOptions() {
         
         await chrome.storage.sync.set(saveData);
         
-        showSuccessMessage('Options saved successfully!');
+        // Update queue URLs in the UI
+        updateQueueUrls(saveData);
         
         // Notify background script to update
         chrome.runtime.sendMessage({ type: 'SNOW_AUDIO_ALERT_OPTIONS_UPDATED' });
         
-        window.scrollTo(0, 0);
+        console.log('Options saved successfully');
         
     } catch (error) {
         console.error('Error saving options:', error);
         showErrorMessage('Error saving options. Please try again.');
+    }
+}
+
+function updateQueueUrls(data) {
+    // Update Queue A URL
+    const queueAUrlElement = document.getElementById('queueAUrl');
+    if (queueAUrlElement) {
+        if (data.primary) {
+            const url = new URL(data.primary);
+            queueAUrlElement.textContent = `${url.hostname}${url.pathname}`;
+            queueAUrlElement.title = data.primary;
+        } else {
+            queueAUrlElement.textContent = 'Not configured';
+            queueAUrlElement.title = '';
+        }
+    }
+
+    // Update Queue B URL
+    const queueBUrlElement = document.getElementById('queueBUrl');
+    if (queueBUrlElement) {
+        if (data.secondary) {
+            const url = new URL(data.secondary);
+            queueBUrlElement.textContent = `${url.hostname}${url.pathname}`;
+            queueBUrlElement.title = data.secondary;
+        } else {
+            queueBUrlElement.textContent = 'Not configured';
+            queueBUrlElement.title = '';
+        }
     }
 }
 
@@ -157,15 +309,11 @@ async function updateLastPollTime() {
         const lastPollElement = document.getElementById('lastPollAt');
         if (lastPollElement) {
             lastPollElement.textContent = result.lastPollAt || 'Never';
+            ticketData.lastPoll = result.lastPollAt || 'Never';
         }
     } catch (error) {
         console.error('Error getting last poll time:', error);
     }
-}
-
-// Utility function to check if value is empty
-function isEmpty(value) {
-    return value === undefined || value === null || value === '' || value === NaN;
 }
 
 // Show success message
@@ -184,56 +332,15 @@ function showMessage(message, type = 'success') {
     if (!status) return;
     
     status.textContent = message;
-    status.className = type;
+    status.className = `alert alert-${type}`;
     status.style.display = 'block';
     
     setTimeout(() => {
         status.style.display = 'none';
         status.textContent = '';
-        status.className = '';
+        status.className = 'alert';
     }, 3000);
 }
-
-// Clear all options
-async function clearOptions() {
-    try {
-        await chrome.storage.sync.clear();
-        
-        // Reset UI
-        const textInputs = document.querySelectorAll('input[type="text"]');
-        textInputs.forEach(input => input.value = '');
-        
-        // Reset checkboxes
-        const checkboxes = ['disableAlarm', 'disablePoll'];
-        checkboxes.forEach(id => {
-            const checkbox = document.getElementById(id);
-            if (checkbox) checkbox.checked = false;
-        });
-        
-        // Set default values
-        const splitcountFalse = document.getElementById('splitcountfalse');
-        if (splitcountFalse) splitcountFalse.checked = true;
-        
-        const nonZeroCount = document.getElementById('nonZeroCount');
-        if (nonZeroCount) nonZeroCount.checked = true;
-        
-        // Reset poll interval
-        const pollInterval = document.getElementById('pollInterval');
-        if (pollInterval) pollInterval.value = '5';
-        
-        showSuccessMessage('All options cleared!');
-        
-        // Notify background script
-        chrome.runtime.sendMessage({ type: 'SNOW_AUDIO_ALERT_OPTIONS_UPDATED' });
-        
-    } catch (error) {
-        console.error('Error clearing options:', error);
-        showErrorMessage('Error clearing options. Please try again.');
-    }
-}
-
-
-
 
 // Restore options from storage
 async function restoreOptions() {
@@ -243,23 +350,28 @@ async function restoreOptions() {
             'disablePoll', 'pollInterval', 'alarmCondition', 'splitcount'
         ]);
         
+        // Restore URLs
+        const urlFields = {
+            'idrooturl': items.rooturl || '',
+            'idsecondaryq': items.secondary || '',
+            'idprimaryq': items.primary || ''
+        };
+        
+        Object.entries(urlFields).forEach(([fieldId, value]) => {
+            const field = document.getElementById(fieldId);
+            if (field) field.value = value;
+        });
+
         // Restore split count setting
-        const splitcountTrue = document.getElementById('splitcounttrue');
-        const splitcountFalse = document.getElementById('splitcountfalse');
-        if (items.splitcount === 'true' && splitcountTrue) {
-            splitcountTrue.checked = true;
-        } else if (splitcountFalse) {
-            splitcountFalse.checked = true;
+        const splitcountSelect = document.getElementById('splitcount');
+        if (splitcountSelect) {
+            splitcountSelect.value = items.splitcount || 'false';
         }
         
         // Restore alarm condition
-        const nonZeroCount = document.getElementById('nonZeroCount');
-        const alarmOnNewEntry = document.getElementById('alarmOnNewEntry');
-        if (items.alarmCondition === 'nonZeroCount' && nonZeroCount) {
-            nonZeroCount.checked = true;
-        } else if (alarmOnNewEntry) {
-            alarmOnNewEntry.checked = true;
-        }
+        const alarmCondition = items.alarmCondition || 'nonZeroCount';
+        const radio = document.querySelector(`input[name="alarmCondition"][value="${alarmCondition}"]`);
+        if (radio) radio.checked = true;
         
         // Restore checkboxes
         const disableAlarm = document.getElementById('disableAlarm');
@@ -275,17 +387,21 @@ async function restoreOptions() {
         const pollIntervalInput = document.getElementById('pollInterval');
         if (pollIntervalInput) pollIntervalInput.value = pollInterval.toString();
         
-        // Restore URLs
-        const urlFields = {
-            'idrooturl': items.rooturl || '',
-            'idsecondaryq': items.secondary || '',
-            'idprimaryq': items.primary || ''
-        };
+        // Update queue URLs in UI
+        updateQueueUrls(items);
         
-        Object.entries(urlFields).forEach(([fieldId, value]) => {
-            const field = document.getElementById(fieldId);
-            if (field) field.value = value;
-        });
+        // Update monitoring status
+        updateMonitoringStatus();
+        
+        // Restore mute state
+        const muteState = await chrome.storage.local.get(['isMuted']);
+        isMuted = muteState.isMuted || false;
+        updateMuteButton();
+        
+        // Restore monitoring state
+        const monitoringState = await chrome.storage.local.get(['isMonitoring']);
+        isMonitoring = monitoringState.isMonitoring || false;
+        updateMonitoringButton();
         
     } catch (error) {
         console.error('Error restoring options:', error);
@@ -325,6 +441,62 @@ async function testAudioNotification() {
         console.error('Error playing test audio:', error);
         showErrorMessage('❌ Could not play audio. Check browser permissions.');
     }
+}
+
+// Update ticket counts in real-time
+function updateTicketCounts(queueACount, queueBCount, totalCount) {
+    const queueACountElement = document.getElementById('queueACount');
+    const queueBCountElement = document.getElementById('queueBCount');
+    const totalCountElement = document.getElementById('totalCount');
+    
+    if (queueACountElement) queueACountElement.textContent = queueACount;
+    if (queueBCountElement) queueBCountElement.textContent = queueBCount;
+    if (totalCountElement) totalCountElement.textContent = totalCount;
+    
+    ticketData.queueA.count = queueACount;
+    ticketData.queueB.count = queueBCount;
+    ticketData.total = totalCount;
+}
+
+// Update ticket list
+function updateTicketList(tickets) {
+    const ticketListElement = document.getElementById('ticketList');
+    if (!ticketListElement) return;
+    
+    if (!tickets || tickets.length === 0) {
+        ticketListElement.innerHTML = '<div class="empty-state">No tickets found</div>';
+        return;
+    }
+    
+    // Show max 5 tickets
+    const displayTickets = tickets.slice(0, 5);
+    const ticketHtml = displayTickets.map(ticket => `
+        <div class="ticket-item">
+            <div class="ticket-number">${ticket.number}</div>
+            <div class="ticket-desc">${ticket.description || 'No description'}</div>
+        </div>
+    `).join('');
+    
+    ticketListElement.innerHTML = ticketHtml;
+}
+
+// Start real-time updates from background script
+function startRealTimeUpdates() {
+    // Listen for updates from background script
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message && message.type === 'TICKET_UPDATE') {
+            updateTicketCounts(
+                message.queueACount || 0,
+                message.queueBCount || 0,
+                message.totalCount || 0
+            );
+            updateTicketList(message.tickets || []);
+            updateLastPollTime();
+        }
+    });
+    
+    // Request initial data
+    chrome.runtime.sendMessage({ type: 'REQUEST_TICKET_DATA' });
 }
 
 

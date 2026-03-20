@@ -33,6 +33,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.type === "SNOW_AUDIO_ALERT_OPTIONS_UPDATED") {
         getSavedData();
+    } else if (msg && msg.type === "REQUEST_TICKET_DATA") {
+        // Send current ticket data to options page
+        sendResponse({
+            type: 'TICKET_DATA_RESPONSE',
+            queueACount: state.currentNumberTickets,
+            queueBCount: state.currentNumberTask,
+            totalCount: state.currentNumberTotal,
+            tickets: state.newList.slice(0, 5).map(ticketNum => ({
+                number: ticketNum,
+                description: 'ServiceNow ticket' // Could be enhanced with real descriptions
+            }))
+        });
     }
 });
 
@@ -161,6 +173,15 @@ async function getQueues(items) {
         }
 
         state.currentNumberTotal = totalCount;
+        
+        // Update individual queue counts for UI
+        if (urls.length === 2) {
+            state.currentNumberTickets = results[0].quantity;
+            state.currentNumberTask = results[1].quantity;
+        } else if (urls.length === 1) {
+            state.currentNumberTickets = results[0].quantity;
+            state.currentNumberTask = 0;
+        }
 
         // Handle audio notifications
         console.log('Audio check - disableAlarm:', items.disableAlarm, 'alarmCondition:', items.alarmCondition, 'totalCount:', totalCount);
@@ -186,6 +207,9 @@ async function getQueues(items) {
 
         // Update lists for next comparison
         state.oldList = [...state.newList];
+        
+        // Send ticket updates to options page
+        await sendTicketUpdateToOptions();
         
         // Store last poll time
         try {
@@ -421,5 +445,34 @@ function removeParam(key, sourceURL) {
         
         const params = queryString.split("&").filter(param => !param.startsWith(key + "="));
         return params.length > 0 ? rtn + "?" + params.join("&") : rtn;
+    }
+}
+
+// Send ticket updates to options page
+async function sendTicketUpdateToOptions() {
+    try {
+        // Get ticket details from storage or current state
+        const tickets = state.newList.slice(0, 5).map(ticketNum => ({
+            number: ticketNum,
+            description: 'ServiceNow ticket' // Could be enhanced with real descriptions
+        }));
+        
+        // Send message to all tabs (options page)
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+            if (tab.url && tab.url.includes('options.html')) {
+                chrome.tabs.sendMessage(tab.id, {
+                    type: 'TICKET_UPDATE',
+                    queueACount: state.currentNumberTickets,
+                    queueBCount: state.currentNumberTask,
+                    totalCount: state.currentNumberTotal,
+                    tickets: tickets
+                }).catch(() => {
+                    // Ignore errors if tab is closed or not ready
+                });
+            }
+        }
+    } catch (error) {
+        console.log('Could not send ticket update to options:', error);
     }
 }

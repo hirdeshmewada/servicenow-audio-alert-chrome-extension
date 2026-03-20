@@ -3,130 +3,577 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SNOW Alert Options</title>
+    <title>SNOW Audio Alerts</title>
     <link href="css/options.css" rel="stylesheet" media="screen" />
     <style>
-        .alert {
-            padding: 12px 16px;
-            margin-bottom: 16px;
-            border-radius: 4px;
+        /* Modern ServiceNow-Inspired UI Styles */
+        body {
+            width: 360px;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+        }
+
+        /* Header - ServiceNow Style */
+        .header {
+            background: linear-gradient(135deg, #2e3e50 0%, #1a252f 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #00a8e0;
+        }
+
+        .header-text h1 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .header-text p {
+            margin: 4px 0 0 0;
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-icon.active {
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Tabs - ServiceNow Style */
+        .tabs {
+            display: flex;
+            background: #ffffff;
+            border-bottom: 1px solid #dcdfe3;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: #64748b;
+            transition: all 0.2s;
+            position: relative;
             font-weight: 500;
         }
-        .alert-success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+
+        .tab:hover {
+            color: #2e3e50;
+            background: #f8f9fa;
         }
+
+        .tab.active {
+            color: #00a8e0;
+            background: white;
+            border-bottom: 2px solid #00a8e0;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            padding: 16px;
+            background: white;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Cards - ServiceNow Style */
+        .card {
+            background: white;
+            border: 1px solid #dcdfe3;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2e3e50;
+            margin: 0 0 12px 0;
+            border-bottom: 1px solid #f0f2f5;
+            padding-bottom: 8px;
+        }
+
+        /* Status Badge - ServiceNow Style */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+
+        .status-stopped {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+
+        /* Queue Info - ServiceNow Style */
+        .queue-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f2f5;
+        }
+
+        .queue-info:last-child {
+            border-bottom: none;
+        }
+
+        .queue-url {
+            font-size: 12px;
+            color: #64748b;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .queue-count {
+            background: #00a8e0;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Ticket List - ServiceNow Style */
+        .ticket-list {
+            margin-top: 12px;
+        }
+
+        .ticket-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f2f5;
+            font-size: 13px;
+        }
+
+        .ticket-item:last-child {
+            border-bottom: none;
+        }
+
+        .ticket-number {
+            font-weight: 600;
+            color: #00a8e0;
+        }
+
+        .ticket-desc {
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        /* Form Elements - ServiceNow Style */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #2e3e50;
+            margin-bottom: 6px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dcdfe3;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+            background: #ffffff;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #00a8e0;
+            box-shadow: 0 0 0 2px rgba(0, 168, 224, 0.2);
+        }
+
+        .help-text {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        /* Buttons - ServiceNow Style */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #00a8e0;
+            color: white;
+            border: 1px solid #0095c8;
+        }
+
+        .btn-primary:hover {
+            background: #0095c8;
+            border-color: #0083b3;
+        }
+
+        .btn-default {
+            background: #f8f9fa;
+            color: #2e3e50;
+            border: 1px solid #dcdfe3;
+        }
+
+        .btn-default:hover {
+            background: #e9ecef;
+            border-color: #c6c8ca;
+        }
+
+        /* Toggles */
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .toggle-label {
+            font-size: 14px;
+            color: #374151;
+        }
+
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #d1d5db;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background-color: #10b981;
+        }
+
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Radio Buttons */
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            color: #374151;
+            cursor: pointer;
+        }
+
+        .radio-label input[type="radio"] {
+            margin-right: 8px;
+        }
+
+        /* Select */
+        .form-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
         .alert-error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 24px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        /* Total Count - ServiceNow Style */
+        .total-count {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 4px;
+            padding: 12px;
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        .total-count-label {
+            font-size: 12px;
+            color: #1565c0;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .total-count-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0d47a1;
         }
     </style>
 </head>
-
 <body>
-    <div class="alert alert-success" id="status"></div>
-    <div class="settings">
-        <div class="page-header">
-            <p class="page-title">SNOW Audio Alerts</p>
-            <p class="page-subtitle">Monitor ServiceNow queues and get badge + audio alerts.</p>
-        </div>
-
-        <div class="card">
-            <p class="card-title">Status</p>
-            <p class="help-block"><strong>Last poll:</strong> <span id="lastPollAt"></span></p>
-        </div>
-
-        <div class="card">
-            <p class="card-title">ServiceNow configuration</p>
-
-            <div class="form-group">
-                <label for="idrooturl">Base URL</label>
-                <input id="idrooturl" type="text" class="form-control input-sm" placeholder="https://&lt;your instance&gt;.service-now.com" />
-                <span class="help-block">Enter your ServiceNow instance base URL. Do not include a trailing “/”.</span>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-text">
+                <h1>SNOW Audio Alerts</h1>
+                <p>Monitor ServiceNow queues with alerts</p>
             </div>
-
-            <div class="form-group">
-                <label for="idprimaryq">Notify 1 URL</label>
-                <input id="idprimaryq" type="text" class="form-control input-sm" placeholder="https://&lt;your instance&gt;.service-now.com/task_list.do?sysparm_query=..." />
-                <span class="help-block">Paste a filtered list/report URL from ServiceNow. See <strong><a href="help.html">help</a></strong>.</span>
-            </div>
-
-            <div class="form-group">
-                <label for="idsecondaryq">Notify 2 URL (optional)</label>
-                <input id="idsecondaryq" type="text" class="form-control input-sm" placeholder="https://&lt;your instance&gt;.service-now.com/task_list.do?sysparm_query=..." />
-                <span class="help-block">Optional second queue/list to monitor.</span>
-            </div>
-
-            <div class="form-group">
-                <label>Badge display</label>
-                <div class="radio-row">
-                    <label for="splitcounttrue"><input type="radio" name="splitcount" class="splitcount" id="splitcounttrue" value="true">Split (A | B)</label>
-                    <label for="splitcountfalse"><input type="radio" name="splitcount" class="splitcount" id="splitcountfalse" value="false">Total (A + B)</label>
-                </div>
-                <span class="help-block">Choose how the extension badge displays counts.</span>
+            <div class="header-controls">
+                <button class="btn-icon" id="startStopBtn" title="Start/Stop Monitoring">
+                    <span id="startStopIcon">▶️</span>
+                </button>
+                <button class="btn-icon" id="muteBtn" title="Mute/Unmute">
+                    <span id="muteIcon">🔊</span>
+                </button>
             </div>
         </div>
 
-        <div class="card">
-            <p class="card-title">Monitoring</p>
+        <!-- Alert Messages -->
+        <div id="status" class="alert"></div>
 
-            <div class="toggle-row">
-                <div class="toggle-meta">
-                    <p class="toggle-label">Disable alarm</p>
-                    <p class="toggle-help">Stops the audio alarm, but continues polling and badge updates.</p>
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="tickets">Tickets</button>
+            <button class="tab" data-tab="configuration">Configuration</button>
+            <button class="tab" data-tab="monitoring">Monitoring</button>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="tickets" class="tab-content active">
+            <!-- Status Card -->
+            <div class="card">
+                <div class="card-title">Status</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <span>Monitoring Status:</span>
+                    <span id="monitoringStatus" class="status-badge status-stopped">Stopped</span>
                 </div>
-                <label class="toggle" aria-label="Disable alarm">
-                    <input type="checkbox" id="disableAlarm" value="on" name="disableAlarm">
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
-
-            <div class="toggle-row">
-                <div class="toggle-meta">
-                    <p class="toggle-label">Disable polling</p>
-                    <p class="toggle-help">Stops polling entirely (no badge updates and no alarms).</p>
+                <div style="font-size: 12px; color: #6b7280;">
+                    <strong>Last Poll:</strong> <span id="lastPollAt">Never</span>
                 </div>
-                <label class="toggle" aria-label="Disable polling">
-                    <input type="checkbox" id="disablePoll" value="on" name="disablePoll">
-                    <span class="toggle-slider"></span>
-                </label>
             </div>
 
-            <div class="form-group" style="margin-top: 12px;">
-                <label>Play alarm when</label>
-                <div class="radio-row">
-                    <label for="nonZeroCount"><input type="radio" name="alarmCondition" class="splitcount" id="nonZeroCount" value="nonZeroCount">Count is &gt; 0</label>
-                    <label for="alarmOnNewEntry"><input type="radio" name="alarmCondition" class="splitcount" id="alarmOnNewEntry" value="alarmOnNewEntry">New ticket appears</label>
+            <!-- Queue A -->
+            <div class="card">
+                <div class="card-title">Queue A</div>
+                <div class="queue-info">
+                    <div class="queue-url" id="queueAUrl">Not configured</div>
+                    <div class="queue-count" id="queueACount">0</div>
                 </div>
-                <span class="help-block">“Count is &gt; 0” will keep alarming every poll until the queue is cleared. “New ticket appears” alarms only when new numbers are detected.</span>
             </div>
 
-            <div class="form-group">
-                <label for="pollInterval">Poll interval (minutes)</label>
-                <input id="pollInterval" type="text" class="form-control input-sm" placeholder="5" />
-                <span class="help-block">Default is 5 minutes.</span>
+            <!-- Queue B -->
+            <div class="card">
+                <div class="card-title">Queue B (Optional)</div>
+                <div class="queue-info">
+                    <div class="queue-url" id="queueBUrl">Not configured</div>
+                    <div class="queue-count" id="queueBCount">0</div>
+                </div>
             </div>
 
-            <div class="form-group">
-                <button class="btn btn-default" id="testAudio" type="button">🔊 Test Audio</button>
-                <span class="help-block">Click to test the audio notification sound.</span>
+            <!-- Total Count -->
+            <div class="total-count">
+                <div class="total-count-label">Total Tickets</div>
+                <div class="total-count-value" id="totalCount">0</div>
+            </div>
+
+            <!-- Recent Tickets -->
+            <div class="card">
+                <div class="card-title">Recent Tickets</div>
+                <div id="ticketList" class="ticket-list">
+                    <div class="empty-state">No tickets found</div>
+                </div>
             </div>
         </div>
 
-        <div class="card">
-            <p class="card-title">Help</p>
-            <p class="help-block" style="margin-top: 0;">
-                <a href="help.html">Setup help</a>
-                &nbsp;·&nbsp;
-                <a href="https://github.com/sekarpdkt/servicenow-audio-alert-chrome-extension/issues">Report an issue</a>
-                &nbsp;·&nbsp;
-                <a href="https://github.com/sekarpdkt/servicenow-audio-alert-chrome-extension">View on GitHub</a>
-            </p>
-            <div class="actions">
-                <button class="btn btn-primary" id="save" type="button">Save</button>
-                <button class="btn btn-default" id="clear" type="button">Clear</button>
+        <div id="configuration" class="tab-content">
+            <!-- Base URL -->
+            <div class="card">
+                <div class="form-group">
+                    <label class="form-label" for="idrooturl">Base URL</label>
+                    <input id="idrooturl" type="text" class="form-control" placeholder="https://instance.service-now.com" />
+                    <div class="help-text">Do not include trailing /</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="idprimaryq">Notify URL 1</label>
+                    <input id="idprimaryq" type="text" class="form-control" placeholder="Queue 1 URL" />
+                    <div class="help-text">Paste a filtered list/report URL from ServiceNow</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="idsecondaryq">Notify URL 2 (Optional)</label>
+                    <input id="idsecondaryq" type="text" class="form-control" placeholder="Queue 2 URL" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="splitcount">Badge Display</label>
+                    <select id="splitcount" class="form-select">
+                        <option value="false">Total (A + B)</option>
+                        <option value="true">Split (A | B)</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" id="save" type="button" style="width: 100%;">Save Configuration</button>
+            </div>
+        </div>
+
+        <div id="monitoring" class="tab-content">
+            <div class="card">
+                <div class="card-title">Monitoring Controls</div>
+
+                <div class="toggle-row">
+                    <span class="toggle-label">Disable Alarm</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="disableAlarm" value="on">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="help-text">Stops sound but still tracks tickets</div>
+
+                <div class="toggle-row" style="margin-top: 16px;">
+                    <span class="toggle-label">Disable Polling</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="disablePoll" value="on">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="help-text">Stops everything</div>
+
+                <div class="form-group" style="margin-top: 20px;">
+                    <label class="form-label">Alert Condition</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="alarmCondition" value="nonZeroCount" checked>
+                            Count is > 0
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="alarmCondition" value="alarmOnNewEntry">
+                            New ticket appears
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="pollInterval">Poll Interval (minutes)</label>
+                    <input id="pollInterval" type="text" class="form-control" placeholder="5" />
+                    <div class="help-text">Default is 5 minutes</div>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-default" id="testAudio" type="button">🔊 Test Audio</button>
+                    <div class="help-text">Test the audio notification sound</div>
+                </div>
             </div>
         </div>
     </div>
