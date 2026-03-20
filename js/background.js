@@ -144,7 +144,7 @@ async function getQueues(items) {
             totalCount = data.quantity;
             if (state.currentNumberTotal < totalCount) {
                 state.ticketNumberGlobal = data.number;
-                await showNotification(data.number, data.description, data.severity);
+                await showNotification(data.number, data, data.severity);
                 shouldNotify = true;
             }
             latestData = data;
@@ -157,7 +157,7 @@ async function getQueues(items) {
                 if (latestData.timestamp > state.newStamp) {
                     state.newStamp = latestData.timestamp;
                     state.ticketNumberGlobal = latestData.number;
-                    await showNotification(latestData.number, latestData.description, latestData.severity);
+                    await showNotification(latestData.number, latestData, latestData.severity);
                     shouldNotify = true;
                 }
             }
@@ -247,7 +247,25 @@ async function getDataREST(url) {
                 number: null,
                 severity: null,
                 description: null,
-                timestamp: 0
+                timestamp: 0,
+                account: null,
+                assigned_to: null,
+                state: null,
+                u_next_step_date_and_time: null,
+                impact: null,
+                category: null,
+                opened_by: null,
+                assignment_group: null,
+                u_first_assignment_group: null,
+                u_service_downtime_started: null,
+                u_service_downtime_end: null,
+                u_fault_cause: null,
+                resolved_by: null,
+                resolved_at: null,
+                u_resolved: null,
+                u_resolved_by: null,
+                sys_updated_on: 0,
+                sys_mod_count: 0
             };
         }
 
@@ -266,30 +284,43 @@ async function getDataREST(url) {
             }
 
             const timestamp = record.sys_updated_on ? new Date(record.sys_updated_on).getTime() : 0;
-
+            
             if (timestamp > maxTimestamp) {
                 maxTimestamp = timestamp;
                 latestRecord = {
-                    quantity: records.length,
                     number: ticketNumber,
                     severity: severity,
-                    description: record.short_description || 'No description',
-                    timestamp: timestamp
+                    description: record.short_description || record.description,
+                    timestamp: timestamp,
+                    account: record.account,
+                    assigned_to: record.assigned_to,
+                    state: record.state,
+                    u_next_step_date_and_time: record.u_next_step_date_and_time,
+                    impact: record.impact,
+                    category: record.category,
+                    opened_by: record.opened_by,
+                    assignment_group: record.assignment_group,
+                    u_first_assignment_group: record.u_first_assignment_group,
+                    u_service_downtime_started: record.u_service_downtime_started,
+                    u_service_downtime_end: record.u_service_downtime_end,
+                    u_fault_cause: record.u_fault_cause,
+                    resolved_by: record.resolved_by,
+                    resolved_at: record.resolved_at,
+                    u_resolved: record.u_resolved,
+                    u_resolved_by: record.u_resolved_by,
+                    sys_updated_on: record.sys_updated_on,
+                    sys_mod_count: record.sys_mod_count
                 };
             }
         });
 
-        return latestRecord || {
+        return {
             quantity: records.length,
-            number: records[0]?.number || null,
-            severity: records[0]?.priority || "5",
-            description: records[0]?.short_description || 'No description',
-            timestamp: maxTimestamp
+            ...latestRecord
         };
 
     } catch (error) {
-        console.error('Error fetching data from ServiceNow:', error);
-        chrome.action.setBadgeText({ text: "Err" });
+        console.error('Error fetching data:', error);
         return {
             quantity: 0,
             number: null,
@@ -324,7 +355,7 @@ async function audioNotification() {
     }
 }
 
-async function showNotification(ticketNumber, ticketDescription, severity) {
+async function showNotification(ticketNumber, ticketData, severity) {
     if (!ticketNumber) return;
 
     let imageName = "ITSM128.png";
@@ -341,21 +372,117 @@ async function showNotification(ticketNumber, ticketDescription, severity) {
         imageName = severityMap[severity];
     }
 
+    // Build rich notification message
+    let notificationTitle = ticketNumber;
+    let notificationMessage = '';
+    
+    if (ticketData) {
+        // Priority indicators in title
+        const priorityLabel = getPriorityLabel(severity);
+        notificationTitle = `${ticketNumber} - ${priorityLabel}`;
+        
+        // Build detailed message
+        const messageParts = [];
+        
+        // Description
+        if (ticketData.description) {
+            messageParts.push(`📝 ${ticketData.description.substring(0, 100)}${ticketData.description.length > 100 ? '...' : ''}`);
+        }
+        
+        // Assignment info
+        if (ticketData.assigned_to && ticketData.assigned_to.display_value) {
+            messageParts.push(`👤 Assigned to: ${ticketData.assigned_to.display_value}`);
+        } else if (ticketData.assignment_group) {
+            messageParts.push(`👥 Group: ${ticketData.assignment_group}`);
+        }
+        
+        // State/Status
+        if (ticketData.state) {
+            messageParts.push(`📊 Status: ${ticketData.state}`);
+        }
+        
+        // Impact
+        if (ticketData.impact) {
+            messageParts.push(`⚡ Impact: ${ticketData.impact}`);
+        }
+        
+        // Category
+        if (ticketData.category) {
+            messageParts.push(`📂 Category: ${ticketData.category}`);
+        }
+        
+        // Next step deadline (SLA)
+        if (ticketData.u_next_step_date_and_time) {
+            const nextStep = new Date(ticketData.u_next_step_date_and_time);
+            const now = new Date();
+            const isOverdue = nextStep < now;
+            const timeDiff = Math.abs(nextStep - now);
+            const hoursDiff = Math.floor(timeDiff / (1000 * 60 * 60));
+            
+            if (isOverdue) {
+                messageParts.push(`⏰ OVERDUE by ${hoursDiff}h`);
+            } else {
+                messageParts.push(`⏰ Due in ${hoursDiff}h`);
+            }
+        }
+        
+        // Service downtime info
+        if (ticketData.u_service_downtime_started && ticketData.u_service_downtime_end) {
+            const startTime = new Date(ticketData.u_service_downtime_started);
+            const endTime = new Date(ticketData.u_service_downtime_end);
+            const duration = Math.floor((endTime - startTime) / (1000 * 60 * 60));
+            messageParts.push(`🔧 Downtime: ${duration}h`);
+        }
+        
+        // Resolution info for updated tickets
+        if (ticketData.resolved_by && ticketData.resolved_by.display_value) {
+            messageParts.push(`✅ Resolved by: ${ticketData.resolved_by.display_value}`);
+        }
+        
+        // Account/customer info
+        if (ticketData.account && ticketData.account.display_value) {
+            messageParts.push(`🏢 Account: ${ticketData.account.display_value}`);
+        }
+        
+        // Modification count (for subsequent updates)
+        if (ticketData.sys_mod_count > 1) {
+            messageParts.push(`🔄 Updated ${ticketData.sys_mod_count} times`);
+        }
+        
+        notificationMessage = messageParts.join('\n');
+    } else {
+        notificationMessage = 'New ServiceNow item';
+    }
+
     try {
         await chrome.notifications.create('reminder', {
             type: 'basic',
             iconUrl: chrome.runtime.getURL(`images/${imageName}`),
-            title: ticketNumber,
-            message: ticketDescription || 'New ServiceNow item'
+            title: notificationTitle,
+            message: notificationMessage
         });
 
-        // Auto-clear notification after 5 seconds
+        // Auto-clear notification after 8 seconds (longer for detailed info)
         setTimeout(async () => {
             await chrome.notifications.clear('reminder');
-        }, 5000);
+        }, 8000);
     } catch (error) {
         console.error('Error creating notification:', error);
     }
+}
+
+// Helper function to get priority label
+function getPriorityLabel(severity) {
+    const priorityMap = {
+        "1": "🔴 CRITICAL",
+        "2": "🟠 HIGH", 
+        "3": "🟡 MEDIUM",
+        "4": "🟢 LOW",
+        "5": "🔵 PLANNED",
+        "10": "📋 SERVICE REQUEST",
+        "15": "🔄 CHANGE"
+    };
+    return priorityMap[severity] || "📋 TASK";
 }
 
 async function openTicketInServiceNow(ticketNumber) {
