@@ -32,9 +32,11 @@ function setupEventListeners() {
     // Button listeners
     const saveBtn = document.getElementById('save');
     const clearBtn = document.getElementById('clear');
+    const testAudioBtn = document.getElementById('testAudio');
     
     if (saveBtn) saveBtn.addEventListener('click', saveOptions);
     if (clearBtn) clearBtn.addEventListener('click', clearOptions);
+    if (testAudioBtn) testAudioBtn.addEventListener('click', testAudioNotification);
     
     // Input field listeners for auto-save
     const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq'];
@@ -288,6 +290,29 @@ async function restoreOptions() {
     } catch (error) {
         console.error('Error restoring options:', error);
         showErrorMessage('Error loading saved options.');
+    }
+}
+
+// Test audio notification function
+async function testAudioNotification() {
+    try {
+        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
+        const audio = new Audio(audioUrl);
+        audio.volume = 0.5;
+        
+        // Show feedback message
+        showSuccessMessage('🔊 Playing test audio...');
+        
+        await audio.play();
+        
+        // Show success message after audio plays
+        setTimeout(() => {
+            showSuccessMessage('✅ Audio test completed successfully!');
+        }, 1000);
+        
+    } catch (error) {
+        console.error('Error playing test audio:', error);
+        showErrorMessage('❌ Could not play audio. Check browser permissions.');
     }
 }
 
