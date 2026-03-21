@@ -89,13 +89,18 @@ async function scheduleAlarmFromItems(items) {
     const pollEnabled = items.disablePoll !== "on";
     const minutes = parsePollIntervalMinutes(items.pollInterval);
 
+    console.log('Scheduling alarm - pollEnabled:', pollEnabled, 'minutes:', minutes);
+    console.log('Current state - scheduledPollEnabled:', state.scheduledPollEnabled, 'scheduledPollMinutes:', state.scheduledPollMinutes);
+
     // Only reconfigure alarms when state changes
     if (state.scheduledPollEnabled === pollEnabled && state.scheduledPollMinutes === minutes) {
+        console.log('Alarm configuration unchanged, skipping');
         return;
     }
 
     // Clear existing alarm
     await chrome.alarms.clear("CheckTicketsAlarm");
+    console.log('Cleared existing alarm');
 
     if (pollEnabled) {
         await chrome.alarms.create("CheckTicketsAlarm", {
@@ -104,16 +109,24 @@ async function scheduleAlarmFromItems(items) {
         });
         state.scheduledPollEnabled = true;
         state.scheduledPollMinutes = minutes;
+        console.log('Created new alarm with interval:', minutes, 'minutes');
     } else {
         state.scheduledPollEnabled = false;
         state.scheduledPollMinutes = null;
+        console.log('Polling disabled, alarm not created');
     }
 }
 
 async function getQueues(items) {
+    console.log('Starting queue processing...');
+    
     if (items.disablePoll === "on") {
+        console.log('Polling disabled, clearing state');
         state.oldList = [];
         state.newList = [];
+        state.currentNumberTickets = 0;
+        state.currentNumberTask = 0;
+        state.currentNumberTotal = 0;
         chrome.action.setBadgeText({ text: "Off" });
         return;
     }
@@ -128,11 +141,15 @@ async function getQueues(items) {
     if (secondaryURL) urls.push(secondaryURL);
 
     if (urls.length === 0) {
+        console.log('No URLs configured');
         chrome.action.setBadgeText({ text: "0" });
         return;
     }
 
     try {
+        console.log('Fetching data from', urls.length, 'URL(s)');
+        chrome.action.setBadgeText({ text: "..." });
+        
         const results = await Promise.all(urls.map(url => getDataREST(url)));
         
         let totalCount = 0;
@@ -165,7 +182,7 @@ async function getQueues(items) {
 
         // Update badge
         if (urls.length === 2 && items.splitcount === "true") {
-            const badgeText = `${results[0].quantity} |${results[1].quantity}`;
+            const badgeText = `${results[0].quantity}|${results[1].quantity}`;
             chrome.action.setBadgeText({ text: badgeText });
         } else {
             chrome.action.setBadgeText({ text: totalCount.toString() });
@@ -182,6 +199,8 @@ async function getQueues(items) {
             state.currentNumberTask = 0;
         }
 
+        console.log('Queue processing complete - totalCount:', totalCount);
+
         // Handle audio notifications
         console.log('Audio check - disableAlarm:', items.disableAlarm, 'alarmCondition:', items.alarmCondition, 'totalCount:', totalCount);
         console.log('Old list:', state.oldList, 'New list:', state.newList);
@@ -190,12 +209,15 @@ async function getQueues(items) {
             if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
                 console.log('Triggering audio - nonZeroCount condition met');
                 await audioNotification();
-            } else if (items.alarmCondition !== "nonZeroCount") {
+            } else if (items.alarmCondition === "alarmOnNewEntry") {
+                // Check for new tickets by comparing old and new lists
                 const difference = state.newList.filter(x => !state.oldList.includes(x));
                 console.log('New tickets detected:', difference);
                 if (difference.length > 0) {
                     console.log('Triggering audio - new tickets condition met');
                     await audioNotification();
+                } else {
+                    console.log('No new tickets - audio not triggered');
                 }
             } else {
                 console.log('No audio trigger - conditions not met');
@@ -355,7 +377,15 @@ async function audioNotification() {
     }
 }
 
-function showNotification(ticketNumber, ticketDescription, severity) {
+function showNotification(ticketNumber, ticketData, severity) {
+    // Extract description from ticketData object, fallback to number if not available
+    let message = 'New ticket assigned';
+    if (ticketData && typeof ticketData === 'object') {
+        message = ticketData.description || ticketData.short_description || `New ticket ${ticketNumber} assigned`;
+    } else if (typeof ticketData === 'string') {
+        message = ticketData;
+    }
+    
     var imageName
     switch (severity) {
         case "1":
@@ -379,11 +409,12 @@ function showNotification(ticketNumber, ticketDescription, severity) {
         default:
             imageName = "ITSM128.png"
     }
+    
     chrome.notifications.create('reminder', {
         type: 'basic',
         iconUrl: 'images/' + imageName,
         title: ticketNumber,
-        message: ticketDescription
+        message: message
     }, function(notificationId) {});
     
 

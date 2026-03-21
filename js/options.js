@@ -685,9 +685,9 @@ function startRealTimeUpdates() {
     // Request initial data
     chrome.runtime.sendMessage({ type: 'REQUEST_TICKET_DATA' });
     
-    // Add debug function for testing
+    // Add debug function for testing (but don't auto-trigger)
     window.testTicketUpdate = function() {
-        console.log('Manual test trigger');
+        console.log('Manual test trigger - this will override real data');
         updateTicketCounts(5, 3, 8);
         updateTicketList([
             { number: 'INC0012345', description: 'Test incident 1' },
@@ -696,14 +696,8 @@ function startRealTimeUpdates() {
         ]);
     };
     
-    // Auto-test after 2 seconds if no data received
-    setTimeout(() => {
-        const queueACount = document.getElementById('queueACount');
-        if (queueACount && queueACount.textContent === '0') {
-            console.log('No data received, triggering test update');
-            window.testTicketUpdate();
-        }
-    }, 2000);
+    // Remove auto-test to prevent overriding real data
+    // The extension should show real data or zeros until actual polling occurs
 }
 
 
