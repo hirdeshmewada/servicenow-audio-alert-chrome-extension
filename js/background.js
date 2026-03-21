@@ -157,6 +157,13 @@ async function getQueues(items) {
         
         const results = await Promise.all(urls.map(url => getDataREST(url)));
         
+        // Console logging for URL-specific data objects
+        console.log(`=== URL-SPECIFIC DATA OBJECTS ===`);
+        results.forEach((result, index) => {
+            console.log(`URL ${index + 1} object:`, result);
+        });
+        console.log(`================================`);
+        
         let totalCount = 0;
         let shouldNotify = false;
         let latestData = null;
@@ -279,6 +286,14 @@ async function getDataREST(url) {
 
         const data = await response.json();
         const records = data.records || [];
+        
+        // Console logging for URL data - print the main table records
+        console.log(`=== URL DATA DEBUG ===`);
+        console.log(`URL: ${url}`);
+        console.log(`Full response data:`, data);
+        console.log(`Records array (main table):`, records);
+        console.log(`Number of records: ${records.length}`);
+        console.log(`=====================`);
 
         if (records.length === 0) {
             return {
