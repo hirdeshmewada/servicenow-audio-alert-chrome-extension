@@ -49,9 +49,11 @@ function setupEventListeners() {
     // Button listeners
     const saveBtn = document.getElementById('save');
     const testAudioBtn = document.getElementById('testAudio');
+    const testNotificationBtn = document.getElementById('testNotification');
     
     if (saveBtn) saveBtn.addEventListener('click', saveOptions);
     if (testAudioBtn) testAudioBtn.addEventListener('click', testAudioNotification);
+    if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
     
     // Input field listeners for auto-save
     const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'pollInterval'];
@@ -428,6 +430,25 @@ async function testAudioNotification() {
     } catch (error) {
         console.error('Error playing test audio:', error);
         showErrorMessage('❌ Could not play audio. Check browser permissions.');
+    }
+}
+
+// Test notification function
+async function testNotification() {
+    try {
+        // Send message to background script to create test notification
+        await chrome.runtime.sendMessage({ 
+            type: "TEST_NOTIFICATION",
+            ticketNumber: "INC0012345",
+            ticketDescription: "This is a test notification to verify the notification system is working properly.",
+            severity: "3"
+        });
+        
+        showSuccessMessage('🔔 Test notification sent!');
+        
+    } catch (error) {
+        console.error('Error sending test notification:', error);
+        showErrorMessage('❌ Could not send test notification.');
     }
 }
 

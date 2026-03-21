@@ -44,6 +44,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 description: 'ServiceNow ticket' // Could be enhanced with real descriptions
             }))
         });
+    } else if (msg && msg.type === "TEST_NOTIFICATION") {
+        // Handle test notification request
+        console.log('Creating test notification:', msg);
+        showNotification(msg.ticketNumber, msg.ticketDescription, msg.severity);
+        sendResponse({ success: true });
     }
 });
 
@@ -159,24 +164,36 @@ async function getQueues(items) {
         if (urls.length === 1) {
             const data = results[0];
             totalCount = data.quantity;
+            console.log('Single queue - Current total:', state.currentNumberTotal, 'New total:', totalCount);
             if (state.currentNumberTotal < totalCount) {
+                console.log('Single queue - New tickets detected, triggering notification');
                 state.ticketNumberGlobal = data.number;
-                await showNotification(data.number, data.description || 'New ticket assigned', data.severity);
+                showNotification(data.number, data.description || 'New ticket assigned', data.severity);
                 shouldNotify = true;
+            } else {
+                console.log('Single queue - No new tickets');
             }
             latestData = data;
         } else {
             const [data1, data2] = results;
             totalCount = data1.quantity + data2.quantity;
+            console.log('Dual queue - Current total:', state.currentNumberTotal, 'New total:', totalCount);
+            console.log('Dual queue - Data1 count:', data1.quantity, 'Data2 count:', data2.quantity);
             
             if (state.currentNumberTotal < totalCount) {
                 latestData = data1.timestamp > data2.timestamp ? data1 : data2;
+                console.log('Dual queue - Latest data:', latestData.number, 'Timestamp:', latestData.timestamp, 'New stamp:', state.newStamp);
                 if (latestData.timestamp > state.newStamp) {
+                    console.log('Dual queue - New ticket detected, triggering notification');
                     state.newStamp = latestData.timestamp;
                     state.ticketNumberGlobal = latestData.number;
-                    await showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity);
+                    showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity);
                     shouldNotify = true;
+                } else {
+                    console.log('Dual queue - Ticket count increased but no newer timestamp');
                 }
+            } else {
+                console.log('Dual queue - No new tickets');
             }
         }
 
@@ -378,35 +395,41 @@ async function audioNotification() {
 }
 
 function showNotification(ticketNumber, ticketDescription, severity) {
-    var imageName
-    switch (severity) {
-        case "1":
-            imageName = "Sev1.png"
-            break;
-        case "2":
-            imageName = "Sev2.png"
-            break;
-        case "3":
-            imageName = "Sev3.png"
-            break;
-        case "4":
-            imageName = "Sev4.png"
-            break;
-        case "10":
-            imageName = "ServiceRequest.png"
-            break;
-        case "15":
-            imageName = "change.png"
-            break;
-        default:
-            imageName = "ITSM128.png"
-    }
-    chrome.notifications.create('reminder', {
+    console.log('Creating notification:', { ticketNumber, ticketDescription, severity });
+    
+    // For now, use the default ITSM128.png icon that we know exists and works
+    const iconUrl = chrome.runtime.getURL('images/ITSM128.png');
+    
+    const notificationOptions = {
         type: 'basic',
-        iconUrl: 'images/' + imageName,
+        iconUrl: iconUrl,
         title: ticketNumber,
         message: ticketDescription
-    }, function(notificationId) {});
+    };
+    
+    console.log('Notification options:', notificationOptions);
+    console.log('Icon URL:', iconUrl);
+    
+    chrome.notifications.create('reminder', notificationOptions, function(notificationId) {
+        if (chrome.runtime.lastError) {
+            console.error('Notification creation error:', chrome.runtime.lastError);
+            // Try fallback without icon if image fails
+            const fallbackOptions = {
+                type: 'basic',
+                title: ticketNumber,
+                message: ticketDescription
+            };
+            chrome.notifications.create('reminder_fallback', fallbackOptions, function(fallbackId) {
+                if (chrome.runtime.lastError) {
+                    console.error('Fallback notification also failed:', chrome.runtime.lastError);
+                } else {
+                    console.log('Fallback notification created with ID:', fallbackId);
+                }
+            });
+        } else {
+            console.log('Notification created with ID:', notificationId);
+        }
+    });
     
 
     //include this line if you want to clear notification after 5 seconds
@@ -416,51 +439,52 @@ function showNotification(ticketNumber, ticketDescription, severity) {
 // Notification click handler - opens appropriate ServiceNow page based on ticket type
 chrome.notifications.onClicked.addListener(notificationClicked);
 
-async function notificationClicked() {
-    const result = await chrome.storage.sync.get(['rooturl']);
-    const rootURL = result.rooturl;
-    
-    if (!rootURL || !state.ticketNumberGlobal) return;
-    
-    let urlTicketSearch;
-    const ticketPrefix = state.ticketNumberGlobal.substring(0, 3);
-    
-    switch (ticketPrefix) {
-        case "TAS":
-            urlTicketSearch = rootURL + "/sc_task.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "INC":
-            urlTicketSearch = rootURL + "/incident.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "CSP":
-            urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "CSR":
-            urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "REQ":
-            urlTicketSearch = rootURL + "/sc_request.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "CHG":
-            urlTicketSearch = rootURL + "/change_request.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "RIT":
-            urlTicketSearch = rootURL + "/sc_req_item.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        case "CAL":
-            urlTicketSearch = rootURL + "/new_call.do?sys_id=" + state.ticketNumberGlobal;
-            break;
-        default:
-            urlTicketSearch = rootURL + "/task_list.do?sysparm_query=numberLIKE" + state.ticketNumberGlobal + "&sysparm_first_row=1&sysparm_view=";
-    }
+function notificationClicked() {
+    chrome.storage.sync.get(['rooturl'], function(result) {
+        const rootURL = result.rooturl;
+        
+        if (!rootURL || !state.ticketNumberGlobal) return;
+        
+        let urlTicketSearch;
+        const ticketPrefix = state.ticketNumberGlobal.substring(0, 3);
+        
+        switch (ticketPrefix) {
+            case "TAS":
+                urlTicketSearch = rootURL + "/sc_task.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "INC":
+                urlTicketSearch = rootURL + "/incident.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "CSP":
+                urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "CSR":
+                urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "REQ":
+                urlTicketSearch = rootURL + "/sc_request.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "CHG":
+                urlTicketSearch = rootURL + "/change_request.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "RIT":
+                urlTicketSearch = rootURL + "/sc_req_item.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            case "CAL":
+                urlTicketSearch = rootURL + "/new_call.do?sys_id=" + state.ticketNumberGlobal;
+                break;
+            default:
+                urlTicketSearch = rootURL + "/task_list.do?sysparm_query=numberLIKE" + state.ticketNumberGlobal + "&sysparm_first_row=1&sysparm_view=";
+        }
 
-    try {
-        await chrome.tabs.create({
-            'url': urlTicketSearch
-        });
-    } catch (error) {
-        console.error('Error opening ticket:', error);
-    }
+        try {
+            chrome.tabs.create({
+                'url': urlTicketSearch
+            });
+        } catch (error) {
+            console.error('Error opening ticket:', error);
+        }
+    });
 }
 
 // Helper function to get priority label
