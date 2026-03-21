@@ -5,6 +5,9 @@
 let currentTab = 'tickets';
 let isMonitoring = false;
 let isMuted = false;
+let countdownTimer = null;
+let currentPollInterval = 5; // Default 5 minutes
+let lastPollTime = null;
 let ticketData = {
     queueA: { count: 0, url: '', tickets: [], previousCount: 0 },
     queueB: { count: 0, url: '', tickets: [], previousCount: 0 },
@@ -20,6 +23,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     await restoreOptions();
     updateLastPollTime();
     startRealTimeUpdates();
+    
+    // Start timer if monitoring is active
+    const disablePollCheckbox = document.getElementById('disablePoll');
+    if (!disablePollCheckbox || !disablePollCheckbox.checked) {
+        // Check if we have recent data to determine if monitoring should be active
+        const result = await chrome.storage.local.get(['lastTicketCounts', 'lastPollAt']);
+        const hasRecentData = result.lastTicketCounts && 
+                            (Date.now() - result.lastTicketCounts.timestamp < 10 * 60 * 1000);
+        const hasRecentPoll = result.lastPollAt && 
+                            (Date.now() - new Date(result.lastPollAt).getTime() < 15 * 60 * 1000);
+        
+        if (hasRecentData || hasRecentPoll) {
+            isMonitoring = true;
+            startCountdownTimer();
+        }
+    }
+    
+    updateMonitoringStatus();
 });
 
 async function initializeOptions() {
@@ -166,18 +187,30 @@ function updateMonitoringButton() {
 function updateMonitoringStatus() {
     const statusElement = document.getElementById('monitoringStatus');
     const disablePollCheckbox = document.getElementById('disablePoll');
+    const pollIntervalInput = document.getElementById('pollInterval');
+    
+    // Update poll interval
+    if (pollIntervalInput) {
+        const interval = parseInt(pollIntervalInput.value, 10);
+        if (!isNaN(interval) && interval > 0) {
+            currentPollInterval = interval;
+        }
+    }
     
     if (statusElement) {
         if (disablePollCheckbox && disablePollCheckbox.checked) {
             statusElement.textContent = 'Stopped';
             statusElement.className = 'status-badge status-stopped';
             isMonitoring = false;
+            stopCountdownTimer();
         } else if (isMonitoring) {
             statusElement.textContent = 'Active';
             statusElement.className = 'status-badge status-active';
+            startCountdownTimer();
         } else {
             statusElement.textContent = 'Stopped';
             statusElement.className = 'status-badge status-stopped';
+            stopCountdownTimer();
         }
     }
     
@@ -477,10 +510,126 @@ function updateTicketCounts(queueACount, queueBCount, totalCount) {
     // Update trends
     updateTrends(queueACount, queueBCount, totalCount);
     
-    // Update ticket data
+    // Update ticket data and persist it
     ticketData.queueA.count = queueACount;
     ticketData.queueB.count = queueBCount;
     ticketData.total = totalCount;
+    
+    // Save to local storage to persist between UI updates
+    chrome.storage.local.set({
+        lastTicketCounts: {
+            queueACount: queueACount,
+            queueBCount: queueBCount,
+            totalCount: totalCount,
+            timestamp: Date.now()
+        }
+    });
+}
+
+// Countdown timer functions
+function startCountdownTimer() {
+    // Clear existing timer
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+    }
+    
+    // Calculate remaining time based on last poll
+    calculateAndStartCountdown();
+}
+
+function calculateAndStartCountdown() {
+    chrome.storage.local.get(['lastPollAt'], function(result) {
+        let secondsRemaining = currentPollInterval * 60; // Default to full interval
+        
+        if (result.lastPollAt) {
+            const lastPollTime = new Date(result.lastPollAt).getTime();
+            const timeSinceLastPoll = Date.now() - lastPollTime;
+            const intervalMs = currentPollInterval * 60 * 1000;
+            
+            // Calculate remaining time in the current interval
+            secondsRemaining = Math.max(0, Math.ceil((intervalMs - timeSinceLastPoll) / 1000));
+            
+            // If we're past the next poll time, reset to full interval
+            if (secondsRemaining <= 0) {
+                secondsRemaining = currentPollInterval * 60;
+            }
+        }
+        
+        console.log('Starting countdown with', secondsRemaining, 'seconds remaining');
+        updateCountdownDisplay(secondsRemaining);
+        
+        countdownTimer = setInterval(() => {
+            secondsRemaining--;
+            updateCountdownDisplay(secondsRemaining);
+            
+            if (secondsRemaining <= 0) {
+                // Reset countdown for next interval
+                secondsRemaining = currentPollInterval * 60;
+            }
+        }, 1000);
+    });
+}
+
+function updateCountdownDisplay(seconds) {
+    const countdownElement = document.getElementById('nextPollCountdown');
+    const progressBar = document.getElementById('countdownProgress');
+    const countdownValue = countdownElement.querySelector('.countdown-value');
+    
+    if (!countdownElement || !progressBar || !countdownValue) return;
+    
+    if (seconds <= 0) {
+        countdownValue.textContent = 'Polling...';
+        countdownValue.className = 'countdown-value';
+        progressBar.style.width = '0%';
+        progressBar.className = 'countdown-progress-bar';
+        return;
+    }
+    
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    const display = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    countdownValue.textContent = display;
+    
+    // Calculate progress percentage
+    const totalSeconds = currentPollInterval * 60;
+    const progressPercentage = (seconds / totalSeconds) * 100;
+    progressBar.style.width = progressPercentage + '%';
+    
+    // Update colors based on time remaining
+    if (seconds <= 30) {
+        // Last 30 seconds - red danger state
+        countdownValue.className = 'countdown-value danger';
+        progressBar.className = 'countdown-progress-bar danger';
+    } else if (seconds <= 60) {
+        // Last minute - orange warning state
+        countdownValue.className = 'countdown-value warning';
+        progressBar.className = 'countdown-progress-bar warning';
+    } else {
+        // Normal state - blue
+        countdownValue.className = 'countdown-value';
+        progressBar.className = 'countdown-progress-bar';
+    }
+}
+
+function stopCountdownTimer() {
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    
+    const countdownElement = document.getElementById('nextPollCountdown');
+    const progressBar = document.getElementById('countdownProgress');
+    const countdownValue = countdownElement ? countdownElement.querySelector('.countdown-value') : null;
+    
+    if (countdownValue) {
+        countdownValue.textContent = '--:--';
+        countdownValue.className = 'countdown-value';
+    }
+    
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.className = 'countdown-progress-bar';
+    }
 }
 
 // Update trend indicators
@@ -681,6 +830,9 @@ function updateTicketList(tickets) {
 
 // Start real-time updates from background script
 function startRealTimeUpdates() {
+    // Load persisted ticket counts on startup
+    loadPersistedTicketData();
+    
     // Listen for updates from background script via runtime
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message && message.type === 'TICKET_UPDATE') {
@@ -692,6 +844,8 @@ function startRealTimeUpdates() {
             );
             updateTicketList(message.tickets || []);
             updateLastPollTime();
+            // Reset countdown when new data arrives
+            startCountdownTimer();
         } else if (message && message.type === 'TICKET_DATA_RESPONSE') {
             // Handle response to initial data request
             updateTicketCounts(
@@ -718,7 +872,42 @@ function startRealTimeUpdates() {
     };
     
     // Remove auto-test to prevent overriding real data
-    // The extension should show real data or zeros until actual polling occurs
+    // The extension should show real data or persisted data until actual polling occurs
+}
+
+// Load persisted ticket data from local storage
+async function loadPersistedTicketData() {
+    try {
+        const result = await chrome.storage.local.get(['lastTicketCounts', 'lastPollAt']);
+        console.log('Loading persisted data:', result);
+        
+        if (result.lastTicketCounts) {
+            const data = result.lastTicketCounts;
+            const age = Date.now() - data.timestamp;
+            const maxAge = 10 * 60 * 1000; // 10 minutes max age
+            
+            // Only restore if data is recent (less than 10 minutes old)
+            if (age < maxAge) {
+                console.log('Restoring persisted ticket data:', data);
+                updateTicketCounts(data.queueACount, data.queueBCount, data.totalCount);
+            } else {
+                console.log('Persisted data too old (' + Math.round(age/1000/60) + ' minutes), using zeros');
+                // Clear old data
+                updateTicketCounts(0, 0, 0);
+            }
+        } else {
+            console.log('No persisted ticket data found');
+        }
+        
+        // Always update last poll time if available
+        if (result.lastPollAt) {
+            const pollAge = Date.now() - new Date(result.lastPollAt).getTime();
+            console.log('Last poll was ' + Math.round(pollAge/1000/60) + ' minutes ago');
+        }
+        
+    } catch (error) {
+        console.error('Error loading persisted ticket data:', error);
+    }
 }
 
 
