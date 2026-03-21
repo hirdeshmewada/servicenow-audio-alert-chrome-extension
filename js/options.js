@@ -5,8 +5,6 @@
 let currentTab = 'tickets';
 let isMonitoring = false;
 let isMuted = false;
-let nextPollTime = null;
-let countdownInterval = null;
 let ticketData = {
     queueA: { count: 0, url: '', tickets: [], previousCount: 0 },
     queueB: { count: 0, url: '', tickets: [], previousCount: 0 },
@@ -694,7 +692,6 @@ function startRealTimeUpdates() {
             );
             updateTicketList(message.tickets || []);
             updateLastPollTime();
-            startCountdownTimer(message.pollInterval || 5); // Start countdown timer
         } else if (message && message.type === 'TICKET_DATA_RESPONSE') {
             // Handle response to initial data request
             updateTicketCounts(
@@ -722,39 +719,6 @@ function startRealTimeUpdates() {
     
     // Remove auto-test to prevent overriding real data
     // The extension should show real data or zeros until actual polling occurs
-}
-
-// Start countdown timer for next poll
-function startCountdownTimer(pollIntervalMinutes) {
-    // Clear existing timer
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-    }
-    
-    nextPollTime = new Date(Date.now() + (pollIntervalMinutes * 60 * 1000));
-    
-    const countdownElement = document.getElementById('nextPollCountdown');
-    const timerElement = document.getElementById('countdownTimer');
-    
-    if (countdownElement && timerElement) {
-        countdownElement.style.display = 'inline';
-        
-        countdownInterval = setInterval(() => {
-            const now = new Date();
-            const timeLeft = nextPollTime - now;
-            
-            if (timeLeft <= 0) {
-                countdownElement.style.display = 'none';
-                clearInterval(countdownInterval);
-                return;
-            }
-            
-            const minutes = Math.floor(timeLeft / (60 * 1000));
-            const seconds = Math.floor((timeLeft % (60 * 1000)) / 1000);
-            
-            timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }, 1000);
-    }
 }
 
 
