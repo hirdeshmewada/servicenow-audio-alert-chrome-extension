@@ -161,7 +161,7 @@ async function getQueues(items) {
             totalCount = data.quantity;
             if (state.currentNumberTotal < totalCount) {
                 state.ticketNumberGlobal = data.number;
-                await showNotification(data.number, data, data.severity);
+                await showNotification(data.number, data.description || 'New ticket assigned', data.severity);
                 shouldNotify = true;
             }
             latestData = data;
@@ -174,7 +174,7 @@ async function getQueues(items) {
                 if (latestData.timestamp > state.newStamp) {
                     state.newStamp = latestData.timestamp;
                     state.ticketNumberGlobal = latestData.number;
-                    await showNotification(latestData.number, latestData, latestData.severity);
+                    await showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity);
                     shouldNotify = true;
                 }
             }
@@ -377,15 +377,7 @@ async function audioNotification() {
     }
 }
 
-function showNotification(ticketNumber, ticketData, severity) {
-    // Extract description from ticketData object, fallback to number if not available
-    let message = 'New ticket assigned';
-    if (ticketData && typeof ticketData === 'object') {
-        message = ticketData.description || ticketData.short_description || `New ticket ${ticketNumber} assigned`;
-    } else if (typeof ticketData === 'string') {
-        message = ticketData;
-    }
-    
+function showNotification(ticketNumber, ticketDescription, severity) {
     var imageName
     switch (severity) {
         case "1":
@@ -409,12 +401,11 @@ function showNotification(ticketNumber, ticketData, severity) {
         default:
             imageName = "ITSM128.png"
     }
-    
     chrome.notifications.create('reminder', {
         type: 'basic',
         iconUrl: 'images/' + imageName,
         title: ticketNumber,
-        message: message
+        message: ticketDescription
     }, function(notificationId) {});
     
 
