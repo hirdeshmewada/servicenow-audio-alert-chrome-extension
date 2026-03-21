@@ -412,18 +412,39 @@ async function audioNotification() {
 function showNotification(ticketNumber, ticketDescription, severity) {
     console.log('Creating notification:', { ticketNumber, ticketDescription, severity });
     
-    // For now, use the default ITSM128.png icon that we know exists and works
-    const iconUrl = chrome.runtime.getURL('images/ITSM128.png');
+    // Determine icon based on priority/severity
+    let iconUrl;
+    const priority = parseInt(severity) || 5; // Default to 5 if invalid
+    
+    switch(priority) {
+        case 1:
+            iconUrl = chrome.runtime.getURL('images/Sev1.gif');
+            break;
+        case 2:
+            iconUrl = chrome.runtime.getURL('images/Sev2.png');
+            break;
+        case 3:
+            iconUrl = chrome.runtime.getURL('images/Sev3.png');
+            break;
+        default:
+            // Fallback to default icon for priorities 4, 5, or invalid
+            iconUrl = chrome.runtime.getURL('images/ITSM128.png');
+    }
+    
+    // Enhanced notification title with priority
+    const priorityLabel = getPriorityLabel(priority);
+    const enhancedTitle = `${priorityLabel} | ${ticketNumber}`;
     
     const notificationOptions = {
         type: 'basic',
         iconUrl: iconUrl,
-        title: ticketNumber,
+        title: enhancedTitle,
         message: ticketDescription
     };
     
     console.log('Notification options:', notificationOptions);
     console.log('Icon URL:', iconUrl);
+    console.log('Priority:', priority, 'Label:', priorityLabel);
     
     chrome.notifications.create('reminder', notificationOptions, function(notificationId) {
         if (chrome.runtime.lastError) {
