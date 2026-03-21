@@ -11,7 +11,8 @@ const state = {
     newList: [],
     oldList: [],
     scheduledPollMinutes: null,
-    scheduledPollEnabled: null
+    scheduledPollEnabled: null,
+    lastNotificationCount: null
 };
 
 // Initialize service worker
@@ -241,6 +242,19 @@ async function getQueues(items) {
             }
         } else {
             console.log('Audio disabled');
+        }
+
+        // Handle visual notifications for "Count is > 0" condition
+        if (items.alarmCondition === "nonZeroCount" && totalCount > 0 && items.disableAlarm !== "on") {
+            // For "Count is > 0" condition, show notification when count > 0 even if not increasing
+            if (state.currentNumberTotal === 0 || !state.lastNotificationCount || state.lastNotificationCount < totalCount) {
+                console.log('Showing notification for nonZeroCount condition');
+                const latestTicket = state.newList[0]; // Get first/latest ticket
+                if (latestTicket) {
+                    showNotification(latestTicket, 'Queue has ' + totalCount + ' ticket(s)', '3');
+                    state.lastNotificationCount = totalCount;
+                }
+            }
         }
 
         // Update lists for next comparison
@@ -593,6 +607,10 @@ function removeParam(key, sourceURL) {
 // Send ticket updates to options page
 async function sendTicketUpdateToOptions() {
     try {
+        // Get poll interval from storage
+        const items = await chrome.storage.sync.get(['pollInterval']);
+        const pollInterval = items.pollInterval || 5;
+        
         // Get ticket details from current state
         const tickets = state.newList.slice(0, 5).map(ticketNum => ({
             number: ticketNum,
@@ -605,13 +623,15 @@ async function sendTicketUpdateToOptions() {
             queueACount: state.currentNumberTickets,
             queueBCount: state.currentNumberTask,
             totalCount: state.currentNumberTotal,
-            tickets: tickets
+            tickets: tickets,
+            pollInterval: pollInterval
         });
         
         console.log('Sent ticket update to options:', {
             queueACount: state.currentNumberTickets,
             queueBCount: state.currentNumberTask,
-            totalCount: state.currentNumberTotal
+            totalCount: state.currentNumberTotal,
+            pollInterval: pollInterval
         });
     } catch (error) {
         console.log('Could not send ticket update to options:', error);
