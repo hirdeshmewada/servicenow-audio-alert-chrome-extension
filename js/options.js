@@ -643,12 +643,17 @@ function calculateAndStartCountdown() {
             const timeSinceLastPoll = Date.now() - lastPollTime;
             const intervalMs = currentPollInterval * 60 * 1000;
             
+            console.log('Timer calculation - Last poll time:', new Date(result.lastPollAt));
+            console.log('Timer calculation - Time since last poll (ms):', timeSinceLastPoll);
+            console.log('Timer calculation - Interval (ms):', intervalMs);
+            
             // Calculate remaining time in the current interval
             secondsRemaining = Math.max(0, Math.ceil((intervalMs - timeSinceLastPoll) / 1000));
             
-            // If we're past the next poll time, reset to full interval
-            if (secondsRemaining <= 0) {
+            // Add small buffer to prevent immediate reset
+            if (secondsRemaining <= 5) {
                 secondsRemaining = currentPollInterval * 60;
+                console.log('Timer reset - less than 5 seconds remaining');
             }
         }
         

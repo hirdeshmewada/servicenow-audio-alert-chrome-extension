@@ -308,16 +308,17 @@ async function getQueues(items) {
         // Update lists for next comparison
         state.oldList = [...state.newList];
         
-        // Send ticket updates to options page
-        await sendTicketUpdateToOptions();
-        
-        // Store last poll time
+        // Store last poll time BEFORE sending updates to ensure timer sync
         try {
             const lastPollAt = new Date().toISOString();
             await chrome.storage.local.set({ lastPollAt });
+            console.log('Stored last poll time:', lastPollAt);
         } catch (e) {
             console.log('Could not store last poll time:', e);
         }
+
+        // Send ticket updates to options page AFTER storing poll time
+        await sendTicketUpdateToOptions();
 
     } catch (error) {
         console.error('Error processing queues:', error);
