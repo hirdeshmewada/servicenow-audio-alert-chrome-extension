@@ -77,8 +77,7 @@ function setupEventListeners() {
     if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
     
     // Input field listeners for auto-save
-    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText', 
-                          'primaryQuery', 'primaryQueryNotificationText', 'secondaryQuery', 'secondaryQueryNotificationText'];
+    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText'];
     autoSaveFields.forEach(fieldId => {
         const field = document.getElementById(fieldId);
         if (field) {
@@ -89,15 +88,6 @@ function setupEventListeners() {
                 }
             });
         }
-    });
-    
-    // Mode switching listeners
-    const modeRadios = document.querySelectorAll('input[name="inputMode"]');
-    modeRadios.forEach(radio => {
-        radio.addEventListener('change', () => {
-            toggleInputMode();
-            saveOptions();
-        });
     });
     
     // Special handling for poll interval - immediate timer update
@@ -319,32 +309,23 @@ async function saveOptions() {
         console.log('Root URL:', rooturl);
         console.log('Secondary URL:', secondary);
         
-        // Validate URLs (only required in URL mode)
-        if (items.inputMode === 'url') {
-            if (primary && !validateServiceNowURL(primary)) {
-                console.error('Primary URL validation failed:', primary);
-                showErrorMessage('Primary URL must be a valid ServiceNow HTTPS URL');
-                return;
-            }
-            
-            if (secondary && !validateServiceNowURL(secondary)) {
-                console.error('Secondary URL validation failed:', secondary);
-                showErrorMessage('Secondary URL must be a valid ServiceNow HTTPS URL');
-                return;
-            }
-        } else if (items.inputMode === 'query') {
-            // In Query mode, validate that Base URL and queries are provided
-            if (!rooturl || !validateServiceNowURL(rooturl)) {
-                console.error('Base URL validation failed:', rooturl);
-                showErrorMessage('Base URL must be a valid ServiceNow HTTPS URL');
-                return;
-            }
-            
-            if (!items.primaryQuery) {
-                console.error('Primary query is required in Query mode');
-                showErrorMessage('Primary query is required when using Query mode');
-                return;
-            }
+        // Validate URLs
+        if (primary && !validateServiceNowURL(primary)) {
+            console.error('Primary URL validation failed:', primary);
+            showErrorMessage('Primary URL must be a valid ServiceNow HTTPS URL');
+            return;
+        }
+        
+        if (secondary && !validateServiceNowURL(secondary)) {
+            console.error('Secondary URL validation failed:', secondary);
+            showErrorMessage('Secondary URL must be a valid ServiceNow HTTPS URL');
+            return;
+        }
+        
+        if (rooturl && !validateServiceNowURL(rooturl)) {
+            console.error('Root URL validation failed:', rooturl);
+            showErrorMessage('Base URL must be a valid ServiceNow HTTPS URL');
+            return;
         }
         
         console.log('All URLs validated successfully!');
@@ -356,7 +337,6 @@ async function saveOptions() {
         }
         
         const saveData = {
-            inputMode: document.querySelector("input[name='inputMode']:checked")?.value || 'url',
             primary: primary.trim(),
             rooturl: rooturl.trim(),
             secondary: secondary.trim(),
@@ -366,11 +346,7 @@ async function saveOptions() {
             disablePoll: document.getElementById('disablePoll')?.checked ? 'on' : 'off',
             alarmCondition: document.querySelector("input[name='alarmCondition']:checked")?.value || 'nonZeroCount',
             primaryNotificationText: document.getElementById('primaryNotificationText')?.value?.trim() || 'New tickets in Queue 1',
-            secondaryNotificationText: document.getElementById('secondaryNotificationText')?.value?.trim() || 'New tickets in Queue 2',
-            primaryQuery: document.getElementById('primaryQuery')?.value?.trim() || '',
-            primaryQueryNotificationText: document.getElementById('primaryQueryNotificationText')?.value?.trim() || 'New tickets in Queue 1',
-            secondaryQuery: document.getElementById('secondaryQuery')?.value?.trim() || '',
-            secondaryQueryNotificationText: document.getElementById('secondaryQueryNotificationText')?.value?.trim() || 'New tickets in Queue 2'
+            secondaryNotificationText: document.getElementById('secondaryNotificationText')?.value?.trim() || 'New tickets in Queue 2'
         };
         
         console.log('Save data:', saveData);
@@ -478,29 +454,13 @@ function showMessage(message, type = 'success') {
     }, 3000);
 }
 
-// Toggle between URL and Query input modes
-function toggleInputMode() {
-    const inputMode = document.querySelector("input[name='inputMode']:checked")?.value || 'url';
-    const urlInputs = document.getElementById('urlInputs');
-    const queryInputs = document.getElementById('queryInputs');
-    
-    if (inputMode === 'url') {
-        urlInputs.style.display = 'block';
-        queryInputs.style.display = 'none';
-    } else {
-        urlInputs.style.display = 'none';
-        queryInputs.style.display = 'block';
-    }
-}
-
 // Restore options from storage
 async function restoreOptions() {
     try {
         const items = await chrome.storage.sync.get([
             'rooturl', 'primary', 'secondary', 'disableAlarm', 
             'disablePoll', 'pollInterval', 'alarmCondition', 'splitcount',
-            'primaryNotificationText', 'secondaryNotificationText', 'inputMode',
-            'primaryQuery', 'primaryQueryNotificationText', 'secondaryQuery', 'secondaryQueryNotificationText'
+            'primaryNotificationText', 'secondaryNotificationText'
         ]);
         
         // Restore URLs
@@ -518,31 +478,13 @@ async function restoreOptions() {
         // Restore notification text fields
         const notificationTextFields = {
             'primaryNotificationText': items.primaryNotificationText || 'New tickets in Queue 1',
-            'secondaryNotificationText': items.secondaryNotificationText || 'New tickets in Queue 2',
-            'primaryQueryNotificationText': items.primaryQueryNotificationText || 'New tickets in Queue 1',
-            'secondaryQueryNotificationText': items.secondaryQueryNotificationText || 'New tickets in Queue 2'
+            'secondaryNotificationText': items.secondaryNotificationText || 'New tickets in Queue 2'
         };
         
         Object.entries(notificationTextFields).forEach(([fieldId, value]) => {
             const field = document.getElementById(fieldId);
             if (field) field.value = value;
         });
-
-        // Restore query fields
-        const queryFields = {
-            'primaryQuery': items.primaryQuery || '',
-            'secondaryQuery': items.secondaryQuery || ''
-        };
-        
-        Object.entries(queryFields).forEach(([fieldId, value]) => {
-            const field = document.getElementById(fieldId);
-            if (field) field.value = value;
-        });
-
-        // Restore input mode
-        const inputMode = items.inputMode || 'url';
-        const modeRadio = document.querySelector(`input[name="inputMode"][value="${inputMode}"]`);
-        if (modeRadio) modeRadio.checked = true;
 
         // Restore split count setting
         const splitcountSelect = document.getElementById('splitcount');
@@ -579,9 +521,6 @@ async function restoreOptions() {
         const monitoringState = await chrome.storage.local.get(['isMonitoring']);
         isMonitoring = monitoringState.isMonitoring || false;
         updateMonitoringButton();
-        
-        // Initialize input mode display
-        toggleInputMode();
         
     } catch (error) {
         console.error('Error restoring options:', error);

@@ -730,72 +730,26 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Input Mode</label>
-                    <div style="margin-bottom: 10px;">
-                        <label style="font-weight: normal; margin-right: 15px;">
-                            <input type="radio" name="inputMode" value="url" checked> URL Mode
-                        </label>
-                        <label style="font-weight: normal;">
-                            <input type="radio" name="inputMode" value="query"> Query Mode
-                        </label>
-                    </div>
+                    <label class="form-label" for="idprimaryq">Notify URL 1</label>
+                    <input id="idprimaryq" type="text" class="form-control" placeholder="Queue 1 URL" />
+                    <div class="help-text">Paste a filtered list/report URL from ServiceNow</div>
                 </div>
 
-                <div id="urlInputs">
-                    <div class="form-group">
-                        <label class="form-label" for="idprimaryq">Notify URL 1</label>
-                        <input id="idprimaryq" type="text" class="form-control" placeholder="Queue 1 URL" />
-                        <div class="help-text">Paste a filtered list/report URL from ServiceNow</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="primaryNotificationText">Queue 1 Notification Text</label>
-                        <input id="primaryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 1" />
-                        <div class="help-text">Custom text for notifications from Queue 1</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="idsecondaryq">Notify URL 2 (Optional)</label>
-                        <input id="idsecondaryq" type="text" class="form-control" placeholder="Queue 2 URL" />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="secondaryNotificationText">Queue 2 Notification Text</label>
-                        <input id="secondaryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 2" />
-                        <div class="help-text">Custom text for notifications from Queue 2</div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label" for="primaryNotificationText">Queue 1 Notification Text</label>
+                    <input id="primaryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 1" />
+                    <div class="help-text">Custom text for notifications from Queue 1</div>
                 </div>
 
-                <div id="queryInputs" style="display: none;">
-                    <div class="form-group">
-                        <label class="form-label" for="idrooturl">Base URL</label>
-                        <input id="idrooturl" type="text" class="form-control" placeholder="https://yourinstance.service-now.com" />
-                        <div class="help-text">Your ServiceNow instance base URL (without trailing /)</div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label" for="idsecondaryq">Notify URL 2 (Optional)</label>
+                    <input id="idsecondaryq" type="text" class="form-control" placeholder="Queue 2 URL" />
+                </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="primaryQuery">Queue 1 Query</label>
-                        <textarea id="primaryQuery" class="form-control" rows="4" placeholder="Paste encoded query from ServiceNow..."></textarea>
-                        <div class="help-text">Copy and paste the encoded query from ServiceNow filter builder</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="primaryQueryNotificationText">Queue 1 Notification Text</label>
-                        <input id="primaryQueryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 1" />
-                        <div class="help-text">Custom text for notifications from Queue 1</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="secondaryQuery">Queue 2 Query (Optional)</label>
-                        <textarea id="secondaryQuery" class="form-control" rows="4" placeholder="Paste encoded query from ServiceNow..."></textarea>
-                        <div class="help-text">Copy and paste the encoded query from ServiceNow filter builder</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="secondaryQueryNotificationText">Queue 2 Notification Text</label>
-                        <input id="secondaryQueryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 2" />
-                        <div class="help-text">Custom text for notifications from Queue 2</div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label" for="secondaryNotificationText">Queue 2 Notification Text</label>
+                    <input id="secondaryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 2" />
+                    <div class="help-text">Custom text for notifications from Queue 2</div>
                 </div>
 
                 <div class="form-group">
