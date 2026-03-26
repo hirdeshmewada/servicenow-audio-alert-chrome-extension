@@ -319,23 +319,32 @@ async function saveOptions() {
         console.log('Root URL:', rooturl);
         console.log('Secondary URL:', secondary);
         
-        // Validate URLs
-        if (primary && !validateServiceNowURL(primary)) {
-            console.error('Primary URL validation failed:', primary);
-            showErrorMessage('Primary URL must be a valid ServiceNow HTTPS URL');
-            return;
-        }
-        
-        if (secondary && !validateServiceNowURL(secondary)) {
-            console.error('Secondary URL validation failed:', secondary);
-            showErrorMessage('Secondary URL must be a valid ServiceNow HTTPS URL');
-            return;
-        }
-        
-        if (rooturl && !validateServiceNowURL(rooturl)) {
-            console.error('Root URL validation failed:', rooturl);
-            showErrorMessage('Base URL must be a valid ServiceNow HTTPS URL');
-            return;
+        // Validate URLs (only required in URL mode)
+        if (items.inputMode === 'url') {
+            if (primary && !validateServiceNowURL(primary)) {
+                console.error('Primary URL validation failed:', primary);
+                showErrorMessage('Primary URL must be a valid ServiceNow HTTPS URL');
+                return;
+            }
+            
+            if (secondary && !validateServiceNowURL(secondary)) {
+                console.error('Secondary URL validation failed:', secondary);
+                showErrorMessage('Secondary URL must be a valid ServiceNow HTTPS URL');
+                return;
+            }
+        } else if (items.inputMode === 'query') {
+            // In Query mode, validate that Base URL and queries are provided
+            if (!rooturl || !validateServiceNowURL(rooturl)) {
+                console.error('Base URL validation failed:', rooturl);
+                showErrorMessage('Base URL must be a valid ServiceNow HTTPS URL');
+                return;
+            }
+            
+            if (!items.primaryQuery) {
+                console.error('Primary query is required in Query mode');
+                showErrorMessage('Primary query is required when using Query mode');
+                return;
+            }
         }
         
         console.log('All URLs validated successfully!');
