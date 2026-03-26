@@ -587,30 +587,88 @@ function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
 
     try {
-        const urlObj = new URL(url);
+        // Handle new ServiceNow UI URLs with double encoding
+        let processedUrl = url;
+        
+        // Check if it's a new UI URL with /now/nav/ui/classic/params/target/
+        if (url.includes('/now/nav/ui/classic/params/target/')) {
+            console.log('Detected new ServiceNow UI URL, processing...');
+            
+            // Extract the actual target URL from the new format
+            const targetMatch = url.match(/params\/target\/(.+)$/);
+            if (targetMatch) {
+                // Decode the double-encoded URL
+                let targetUrl = targetMatch[1];
+                
+                // First decode: %3F -> ?, %253D -> %3D, etc.
+                targetUrl = decodeURIComponent(targetUrl);
+                
+                // Second decode: %3D -> =, %26 -> &, etc.
+                targetUrl = decodeURIComponent(targetUrl);
+                
+                console.log('Extracted target URL:', targetUrl);
+                
+                // Rebuild the full URL
+                const urlMatch = url.match(/(https:\/\/[^\/]+)/);
+                if (urlMatch) {
+                    processedUrl = urlMatch[1] + '/' + targetUrl;
+                    console.log('Processed URL:', processedUrl);
+                }
+            }
+        }
+        
+        // Special handling for ServiceNow URLs with complex query parameters
+        // We need to preserve the entire sysparm_query without URL parsing interference
+        const urlObj = new URL(processedUrl);
         
         // Validate it's a ServiceNow URL
         if (!urlObj.hostname.includes('service-now.com')) {
-            console.warn('URL does not appear to be a ServiceNow instance:', url);
+            console.warn('URL does not appear to be a ServiceNow instance:', processedUrl);
             return undefined;
         }
 
-        // Convert to REST API format
-        let restURL = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}${urlObj.search}`;
+        // For ServiceNow URLs, we need to manually handle the query to preserve special characters
+        let restURL = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
         
-        // Remove unwanted parameters
-        restURL = removeParam("sysparm_fields", restURL);
-        restURL = removeParam("sysparm_view", restURL);
+        // Get the original query string without parsing to preserve special characters
+        const queryString = processedUrl.includes('?') ? processedUrl.split('?')[1] : '';
+        
+        // Remove unwanted parameters from the query string manually
+        let cleanQuery = queryString;
+        cleanQuery = removeParamFromString("sysparm_fields", cleanQuery);
+        cleanQuery = removeParamFromString("sysparm_view", cleanQuery);
         
         // Add JSON and required fields
-        const separator = restURL.includes('?') ? '&' : '?';
-        restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
+        const separator = cleanQuery.includes('?') || cleanQuery.includes('=') ? '&' : '?';
+        restURL += '?' + cleanQuery + `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
         
+        console.log('Final REST API URL:', restURL);
         return restURL;
     } catch (error) {
         console.error('Error processing URL:', error);
         return undefined;
     }
+}
+
+// Helper function to remove parameters from query string without URL parsing
+function removeParamFromString(paramName, queryString) {
+    if (!queryString) return queryString;
+    
+    // Remove parameter with its value
+    const regex = new RegExp(`&?${paramName}=[^&]*`, 'g');
+    let result = queryString.replace(regex, '');
+    
+    // Remove leading ? if it's the only parameter
+    if (result.startsWith('?') && result.indexOf('&') === -1) {
+        result = result.substring(1);
+    }
+    
+    // Replace leading & if present
+    if (result.startsWith('&')) {
+        result = result.substring(1);
+    }
+    
+    return result;
 }
 
 function removeParam(key, sourceURL) {
