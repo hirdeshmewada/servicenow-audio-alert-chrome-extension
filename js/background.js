@@ -548,7 +548,17 @@ async function createNotificationWithDelay(notificationData) {
         title: notificationTitle,
         message: ticketDescription,
         requireInteraction: false, // Don't require interaction - will auto-dismiss
-        isClickable: true // Allow clicking on notification
+        isClickable: true, // Allow clicking on notification
+        buttons: [
+            {
+                title: "🔇 Stop Audio",
+                iconUrl: chrome.runtime.getURL('images/ITSM128.png') // You can add a stop icon
+            },
+            {
+                title: "🔗 Open Queue",
+                iconUrl: chrome.runtime.getURL('images/ITSM128.png') // You can add a link icon
+            }
+        ]
     };
     
     console.log('Notification options:', notificationOptions);
@@ -567,7 +577,17 @@ async function createNotificationWithDelay(notificationData) {
                 title: notificationTitle,
                 message: ticketDescription,
                 requireInteraction: false,
-                isClickable: true
+                isClickable: true,
+                buttons: [
+                    {
+                        title: "🔇 Stop Audio",
+                        iconUrl: chrome.runtime.getURL('images/ITSM128.png')
+                    },
+                    {
+                        title: "🔗 Open Queue",
+                        iconUrl: chrome.runtime.getURL('images/ITSM128.png')
+                    }
+                ]
             };
             chrome.notifications.create(`fallback_${notificationId}`, fallbackOptions, function(fallbackId) {
                 if (chrome.runtime.lastError) {
@@ -622,9 +642,54 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
     processNotificationQueue();
 }
 
-// Notification click handler - opens the specific queue URL
+// Notification button click handler - handles Stop Audio and Open Queue buttons
+chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+    console.log('Notification button clicked:', notificationId, 'Button index:', buttonIndex);
+    
+    try {
+        if (buttonIndex === 0) {
+            // Stop Audio button clicked
+            console.log('Stop Audio button clicked - stopping audio');
+            await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
+            console.log('Audio stopped via Stop Audio button');
+            
+            // Clear the notification after stopping audio
+            chrome.notifications.clear(notificationId);
+            chrome.storage.local.remove(`notification_${notificationId}`);
+            
+        } else if (buttonIndex === 1) {
+            // Open Queue button clicked
+            console.log('Open Queue button clicked');
+            
+            // Get the stored queue URL for this notification
+            const result = await chrome.storage.local.get([`notification_${notificationId}`]);
+            const queueUrl = result[`notification_${notificationId}`];
+            
+            if (queueUrl) {
+                console.log('Opening queue URL:', queueUrl);
+                // Create new tab with the queue URL
+                await chrome.tabs.create({ url: queueUrl });
+                
+                // Clear the notification after opening
+                chrome.notifications.clear(notificationId);
+                chrome.storage.local.remove(`notification_${notificationId}`);
+            } else {
+                console.log('No queue URL found for notification:', notificationId);
+                // Fallback to root URL if available
+                const rootResult = await chrome.storage.sync.get(['rooturl']);
+                if (rootResult.rooturl) {
+                    await chrome.tabs.create({ url: rootResult.rooturl });
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error handling notification button click:', error);
+    }
+});
+
+// Notification click handler - opens the specific queue URL (for clicking the notification body)
 chrome.notifications.onClicked.addListener(async (notificationId) => {
-    console.log('Notification clicked:', notificationId);
+    console.log('Notification body clicked:', notificationId);
     
     try {
         // Get the stored queue URL for this notification
@@ -638,7 +703,6 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
             
             // Clear the notification after clicking
             chrome.notifications.clear(notificationId);
-            // Clean up stored URL
             chrome.storage.local.remove(`notification_${notificationId}`);
         } else {
             console.log('No queue URL found for notification:', notificationId);
