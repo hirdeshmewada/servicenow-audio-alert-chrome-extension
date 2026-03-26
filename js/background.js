@@ -587,66 +587,121 @@ function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
 
     try {
-        // Handle new ServiceNow UI URLs with double encoding
+        console.log('Processing ServiceNow URL:', url);
+        
+        // Handle new ServiceNow UI URLs with multiple encoding levels
         let processedUrl = url;
         
         // Check if it's a new UI URL with /now/nav/ui/classic/params/target/
         if (url.includes('/now/nav/ui/classic/params/target/')) {
             console.log('Detected new ServiceNow UI URL, processing...');
             
-            // Extract the actual target URL from the new format
             const targetMatch = url.match(/params\/target\/(.+)$/);
             if (targetMatch) {
-                // Decode the double-encoded URL
                 let targetUrl = targetMatch[1];
                 
-                // First decode: %3F -> ?, %253D -> %3D, etc.
-                targetUrl = decodeURIComponent(targetUrl);
-                
-                // Second decode: %3D -> =, %26 -> &, etc.
-                targetUrl = decodeURIComponent(targetUrl);
-                
-                console.log('Extracted target URL:', targetUrl);
+                // Progressive decoding - handle multiple encoding levels
+                let decodedUrl = progressiveDecode(targetUrl);
+                console.log('Progressively decoded URL:', decodedUrl);
                 
                 // Rebuild the full URL
                 const urlMatch = url.match(/(https:\/\/[^\/]+)/);
                 if (urlMatch) {
-                    processedUrl = urlMatch[1] + '/' + targetUrl;
-                    console.log('Processed URL:', processedUrl);
+                    processedUrl = urlMatch[1] + '/' + decodedUrl;
+                    console.log('Rebuilt URL:', processedUrl);
                 }
             }
         }
         
-        // Special handling for ServiceNow URLs with complex query parameters
-        // We need to preserve the entire sysparm_query without URL parsing interference
-        const urlObj = new URL(processedUrl);
-        
         // Validate it's a ServiceNow URL
+        const urlObj = new URL(processedUrl);
         if (!urlObj.hostname.includes('service-now.com')) {
             console.warn('URL does not appear to be a ServiceNow instance:', processedUrl);
             return undefined;
         }
 
-        // For ServiceNow URLs, we need to manually handle the query to preserve special characters
+        // Extract ServiceNow query parameters safely
+        const serviceNowQuery = extractServiceNowQuery(processedUrl);
+        console.log('Extracted ServiceNow query:', serviceNowQuery);
+        
+        // Build REST API URL with preserved parameters
         let restURL = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
         
-        // Get the original query string without parsing to preserve special characters
-        const queryString = processedUrl.includes('?') ? processedUrl.split('?')[1] : '';
+        // Add the preserved ServiceNow query
+        if (serviceNowQuery) {
+            restURL += '?sysparm_query=' + encodeURIComponent(serviceNowQuery);
+        }
         
-        // Remove unwanted parameters from the query string manually
-        let cleanQuery = queryString;
-        cleanQuery = removeParamFromString("sysparm_fields", cleanQuery);
-        cleanQuery = removeParamFromString("sysparm_view", cleanQuery);
-        
-        // Add JSON and required fields
-        const separator = cleanQuery.includes('?') || cleanQuery.includes('=') ? '&' : '?';
-        restURL += '?' + cleanQuery + `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
+        // Add REST API parameters
+        const separator = serviceNowQuery ? '&' : '?';
+        restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
         
         console.log('Final REST API URL:', restURL);
         return restURL;
     } catch (error) {
         console.error('Error processing URL:', error);
         return undefined;
+    }
+}
+
+// Progressive decoding for multiple encoding levels
+function progressiveDecode(encodedString) {
+    let decoded = encodedString;
+    let previousDecoded;
+    let decodeCount = 0;
+    const maxDecodes = 5; // Prevent infinite loops
+    
+    do {
+        previousDecoded = decoded;
+        try {
+            decoded = decodeURIComponent(decoded);
+            decodeCount++;
+            console.log(`Decode iteration ${decodeCount}:`, decoded);
+        } catch (e) {
+            console.log('Decoding failed at iteration', decodeCount + 1, ':', e.message);
+            break;
+        }
+    } while (decoded !== previousDecoded && decodeCount < maxDecodes);
+    
+    console.log(`Total decode iterations: ${decodeCount}`);
+    return decoded;
+}
+
+// Safe ServiceNow query extraction
+function extractServiceNowQuery(url) {
+    try {
+        // Handle both encoded and non-encoded URLs
+        let workingUrl = url;
+        
+        // Decode the URL first if it's encoded
+        if (url.includes('%')) {
+            workingUrl = progressiveDecode(url);
+        }
+        
+        // Extract sysparm_query using multiple patterns
+        const patterns = [
+            /sysparm_query=([^&]*)/,
+            /sysparm_query%3D([^&]*)/,
+            /[?&]sysparm_query=([^&]*)/
+        ];
+        
+        for (const pattern of patterns) {
+            const match = workingUrl.match(pattern);
+            if (match) {
+                let query = match[1];
+                // Additional decode if needed
+                if (query.includes('%')) {
+                    query = progressiveDecode(query);
+                }
+                return query;
+            }
+        }
+        
+        console.warn('Could not extract sysparm_query from URL');
+        return '';
+    } catch (error) {
+        console.error('Error extracting ServiceNow query:', error);
+        return '';
     }
 }
 
