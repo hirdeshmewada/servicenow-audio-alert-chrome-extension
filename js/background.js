@@ -140,9 +140,8 @@ async function getQueues(items) {
     const secondaryURL = changeURLforRESTAPI(items.secondary);
     state.rootURL = items.rooturl;
     
-    // Store current newList as oldList before we start fetching new data
-    state.oldList = [...state.newList];
-    // Clear newList to populate with fresh data
+    // Preserve old list before resetting new list for proper comparison
+    const previousList = [...state.newList];
     state.newList = [];
 
     const urls = [];
@@ -231,15 +230,15 @@ async function getQueues(items) {
 
         // Handle audio notifications
         console.log('Audio check - disableAlarm:', items.disableAlarm, 'alarmCondition:', items.alarmCondition, 'totalCount:', totalCount);
-        console.log('Old list:', state.oldList, 'New list:', state.newList);
+        console.log('Previous list:', previousList, 'New list:', state.newList);
         
         if (items.disableAlarm !== "on") {
             if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
                 console.log('Triggering audio - nonZeroCount condition met');
                 await audioNotification();
             } else if (items.alarmCondition === "alarmOnNewEntry") {
-                // Check for new tickets by comparing old and new lists
-                const difference = state.newList.filter(x => !state.oldList.includes(x));
+                // Check for new tickets by comparing previous and new lists
+                const difference = state.newList.filter(x => !previousList.includes(x));
                 console.log('New tickets detected:', difference);
                 if (difference.length > 0) {
                     console.log('Triggering audio - new tickets condition met');
@@ -254,6 +253,9 @@ async function getQueues(items) {
             console.log('Audio disabled');
         }
 
+        // Update lists for next comparison
+        state.oldList = [...state.newList];
+        
         // Send ticket updates to options page
         await sendTicketUpdateToOptions();
         
@@ -273,24 +275,15 @@ async function getQueues(items) {
 
 async function getDataREST(url) {
     try {
-        // Add authentication headers for ServiceNow API
         const response = await fetch(url + '&sysparm_limit=1000', {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-UserToken': await getServiceNowUserToken(),
-                'Cookie': await getServiceNowCookies()
-            },
-            credentials: 'include' // Include cookies for authentication
+                'Content-Type': 'application/json'
+            }
         });
 
         if (!response.ok) {
-            // If 401 Unauthorized, try alternative approach
-            if (response.status === 401) {
-                console.log('Authentication failed, trying alternative method...');
-                return await getDataRESTAlternative(url);
-            }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
@@ -385,6 +378,7 @@ async function getDataREST(url) {
 
     } catch (error) {
         console.error('Error fetching data:', error);
+        // Return empty result on error to prevent breaking the UI
         return {
             quantity: 0,
             number: null,
@@ -593,70 +587,11 @@ function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
 
     try {
-        let processedURL = url;
-        
-        // Handle new ServiceNow UI URLs - extract filters and convert to REST API
-        if (url.includes('/now/nav/ui/classic/params/target/')) {
-            console.log('Processing new ServiceNow UI URL format');
-            
-            // Extract the encoded target URL
-            const urlParts = url.split('/params/target/');
-            if (urlParts.length < 2) {
-                console.error('Invalid new ServiceNow URL format');
-                return undefined;
-            }
-            
-            // Get the base URL and the encoded target
-            const urlObj = new URL(url);
-            const encodedTarget = urlParts[1];
-            
-            // Decode the query parameters carefully (only the sysparm_query part)
-            let decodedTarget = decodeURIComponent(encodedTarget);
-            
-            // If still has encoded query params, decode again
-            if (decodedTarget.includes('%25') || decodedTarget.includes('%3F')) {
-                decodedTarget = decodeURIComponent(decodedTarget);
-                console.log('Applied double decoding for query parameters');
-            }
-            
-            // Extract table name and query parameters
-            let tableName = 'sn_customerservice_case'; // default
-            let queryParameters = '';
-            
-            if (decodedTarget.includes('incident_list')) {
-                tableName = 'incident';
-            } else if (decodedTarget.includes('sc_task_list')) {
-                tableName = 'sc_task';
-            } else if (decodedTarget.includes('change_request_list')) {
-                tableName = 'change_request';
-            } else if (decodedTarget.includes('sn_customerservice_case_list')) {
-                tableName = 'sn_customerservice_case';
-            }
-            
-            // Extract the sysparm_query if it exists
-            const queryMatch = decodedTarget.match(/sysparm_query=([^&]+)/);
-            if (queryMatch) {
-                queryParameters = queryMatch[1];
-                console.log('Extracted query parameters:', queryParameters);
-            }
-            
-            // Build REST API URL with the extracted filters
-            let restURL = `${urlObj.protocol}//${urlObj.host}/api/now/table/${tableName}?JSONv2&sysparm_limit=1000&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
-            
-            // Add the extracted query parameters to preserve filters
-            if (queryParameters) {
-                restURL += `&sysparm_query=${encodeURIComponent(queryParameters)}`;
-            }
-            
-            console.log('Converted new UI URL to REST API with filters:', restURL);
-            return restURL;
-        }
-        
-        const urlObj = new URL(processedURL);
+        const urlObj = new URL(url);
         
         // Validate it's a ServiceNow URL
         if (!urlObj.hostname.includes('service-now.com')) {
-            console.warn('URL does not appear to be a ServiceNow instance:', processedURL);
+            console.warn('URL does not appear to be a ServiceNow instance:', url);
             return undefined;
         }
 
@@ -671,81 +606,10 @@ function changeURLforRESTAPI(url) {
         const separator = restURL.includes('?') ? '&' : '?';
         restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
         
-        console.log('Final REST API URL:', restURL);
         return restURL;
     } catch (error) {
         console.error('Error processing URL:', error);
         return undefined;
-    }
-}
-
-// Helper functions for ServiceNow authentication
-async function getServiceNowUserToken() {
-    try {
-        // Try to get user token from storage or generate one
-        const { userToken } = await chrome.storage.sync.get(['userToken']);
-        return userToken || '';
-    } catch (error) {
-        console.log('Could not get user token:', error);
-        return '';
-    }
-}
-
-async function getServiceNowCookies() {
-    try {
-        // Get cookies for ServiceNow domain
-        const cookies = await chrome.cookies.getAll({ domain: 'service-now.com' });
-        return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-    } catch (error) {
-        console.log('Could not get cookies:', error);
-        return '';
-    }
-}
-
-// Alternative method for authentication
-async function getDataRESTAlternative(url) {
-    try {
-        console.log('Trying alternative authentication method...');
-        
-        // Extract the instance name from URL
-        const urlObj = new URL(url);
-        const instanceName = urlObj.hostname.split('.')[0];
-        
-        // Try to use the original list URL approach
-        const originalUrl = url.replace('/api/now/table/', `/${urlObj.pathname.split('/')[1]}_list.do?`);
-        
-        const response = await fetch(originalUrl, {
-            method: 'GET',
-            headers: {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Content-Type': 'text/html'
-            },
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Alternative method failed: HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        // For now, return empty result since we can't easily parse HTML
-        console.log('Alternative method succeeded but HTML parsing needed');
-        return {
-            quantity: 0,
-            number: null,
-            severity: null,
-            description: null,
-            timestamp: 0
-        };
-        
-    } catch (error) {
-        console.error('Alternative authentication method failed:', error);
-        return {
-            quantity: 0,
-            number: null,
-            severity: null,
-            description: null,
-            timestamp: 0
-        };
     }
 }
 

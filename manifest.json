@@ -31,8 +31,7 @@
 	"notifications",
 	"tabs",
 	"storage",
-	"offscreen",
-	"cookies"
+	"offscreen"
   ],
   
   "host_permissions": [
