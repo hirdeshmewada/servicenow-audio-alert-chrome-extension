@@ -273,15 +273,24 @@ async function getQueues(items) {
 
 async function getDataREST(url) {
     try {
+        // Add authentication headers for ServiceNow API
         const response = await fetch(url + '&sysparm_limit=1000', {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
+                'Content-Type': 'application/json',
+                'X-UserToken': await getServiceNowUserToken(),
+                'Cookie': await getServiceNowCookies()
+            },
+            credentials: 'include' // Include cookies for authentication
         });
 
         if (!response.ok) {
+            // If 401 Unauthorized, try alternative approach
+            if (response.status === 401) {
+                console.log('Authentication failed, trying alternative method...');
+                return await getDataRESTAlternative(url);
+            }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
@@ -667,6 +676,76 @@ function changeURLforRESTAPI(url) {
     } catch (error) {
         console.error('Error processing URL:', error);
         return undefined;
+    }
+}
+
+// Helper functions for ServiceNow authentication
+async function getServiceNowUserToken() {
+    try {
+        // Try to get user token from storage or generate one
+        const { userToken } = await chrome.storage.sync.get(['userToken']);
+        return userToken || '';
+    } catch (error) {
+        console.log('Could not get user token:', error);
+        return '';
+    }
+}
+
+async function getServiceNowCookies() {
+    try {
+        // Get cookies for ServiceNow domain
+        const cookies = await chrome.cookies.getAll({ domain: 'service-now.com' });
+        return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+    } catch (error) {
+        console.log('Could not get cookies:', error);
+        return '';
+    }
+}
+
+// Alternative method for authentication
+async function getDataRESTAlternative(url) {
+    try {
+        console.log('Trying alternative authentication method...');
+        
+        // Extract the instance name from URL
+        const urlObj = new URL(url);
+        const instanceName = urlObj.hostname.split('.')[0];
+        
+        // Try to use the original list URL approach
+        const originalUrl = url.replace('/api/now/table/', `/${urlObj.pathname.split('/')[1]}_list.do?`);
+        
+        const response = await fetch(originalUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Content-Type': 'text/html'
+            },
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Alternative method failed: HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // For now, return empty result since we can't easily parse HTML
+        console.log('Alternative method succeeded but HTML parsing needed');
+        return {
+            quantity: 0,
+            number: null,
+            severity: null,
+            description: null,
+            timestamp: 0
+        };
+        
+    } catch (error) {
+        console.error('Alternative authentication method failed:', error);
+        return {
+            quantity: 0,
+            number: null,
+            severity: null,
+            description: null,
+            timestamp: 0
+        };
     }
 }
 
