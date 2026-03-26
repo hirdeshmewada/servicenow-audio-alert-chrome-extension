@@ -194,15 +194,6 @@ async function getQueues(items) {
             const data = results[0];
             totalCount = data.quantity;
             console.log('Single queue - Current total:', state.currentNumberTotal, 'New total:', totalCount);
-            if (state.currentNumberTotal < totalCount) {
-                console.log('Single queue - New tickets detected, triggering notification');
-                state.ticketNumberGlobal = data.number;
-                const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
-                showNotification(data.number, data.description || 'New ticket assigned', data.severity, customTitle);
-                shouldNotify = true;
-            } else {
-                console.log('Single queue - No new tickets');
-            }
             latestData = data;
         } else {
             const [data1, data2] = results;
@@ -214,20 +205,9 @@ async function getQueues(items) {
                 latestData = data1.timestamp > data2.timestamp ? data1 : data2;
                 console.log('Dual queue - Latest data:', latestData.number, 'Timestamp:', latestData.timestamp, 'New stamp:', state.newStamp);
                 if (latestData.timestamp > state.newStamp) {
-                    console.log('Dual queue - New ticket detected, triggering notification');
+                    console.log('Dual queue - New ticket detected, updating timestamp');
                     state.newStamp = latestData.timestamp;
                     state.ticketNumberGlobal = latestData.number;
-                    
-                    // Determine which queue triggered the notification and use its custom text
-                    let customTitle;
-                    if (latestData === data1) {
-                        customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
-                    } else {
-                        customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
-                    }
-                    
-                    showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle);
-                    shouldNotify = true;
                 } else {
                     console.log('Dual queue - Ticket count increased but no newer timestamp');
                 }
@@ -257,14 +237,24 @@ async function getQueues(items) {
 
         console.log('Queue processing complete - totalCount:', totalCount);
 
-        // Handle audio notifications
-        console.log('Audio check - disableAlarm:', items.disableAlarm, 'alarmCondition:', items.alarmCondition, 'totalCount:', totalCount);
-        console.log('Previous list:', previousList, 'New list:', state.newList);
+        // Handle notifications based on alert condition
+        console.log('=== NOTIFICATION LOGIC ===');
+        console.log('Alert condition:', items.alarmCondition);
+        console.log('Audio disabled:', items.disableAlarm === "on");
+        console.log('Total count:', totalCount);
+        console.log('Previous total:', state.currentNumberTotal);
         
         if (items.disableAlarm !== "on") {
             if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
-                console.log('Triggering audio - nonZeroCount condition met');
+                console.log('✅ Triggering - Count > 0 condition met');
                 await audioNotification();
+                
+                // Also create notification for non-zero count
+                if (latestData) {
+                    const customTitle = totalCount > 0 ? 'Tickets Available' : 'No Tickets';
+                    showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle);
+                }
+                
             } else if (items.alarmCondition === "alarmOnNewEntry") {
                 // Check for new tickets by comparing previous and new lists
                 console.log('=== NEW TICKET DETECTION LOGIC ===');
@@ -277,13 +267,29 @@ async function getQueues(items) {
                 const difference = state.newList.filter(x => !previousList.includes(x));
                 console.log('New tickets detected (difference):', difference);
                 
-                // Only trigger audio if:
+                // Only trigger if:
                 // 1. This is not the first run (previousList is not empty)
                 // 2. There are actual new tickets (difference > 0)
                 if (previousList.length > 0 && difference.length > 0) {
                     console.log('✅ Triggering audio - new tickets condition met');
                     console.log('New tickets:', difference);
                     await audioNotification();
+                    
+                    // Create notification for new tickets
+                    if (latestData) {
+                        let customTitle;
+                        if (urls.length === 1) {
+                            customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                        } else {
+                            // Determine which queue triggered the notification
+                            if (latestData === results[0]) {
+                                customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                            } else {
+                                customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
+                            }
+                        }
+                        showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle);
+                    }
                 } else {
                     console.log('❌ No new tickets - audio not triggered');
                     if (previousList.length === 0 && state.newList.length > 0) {
@@ -299,10 +305,10 @@ async function getQueues(items) {
                     }
                 }
             } else {
-                console.log('No audio trigger - conditions not met');
+                console.log('❌ No notification trigger - conditions not met');
             }
         } else {
-            console.log('Audio disabled');
+            console.log('❌ Audio disabled - no notifications');
         }
 
         // Update lists for next comparison
