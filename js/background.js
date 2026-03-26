@@ -59,7 +59,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Handle test notification request
         console.log('Creating test notification:', msg);
         const customTitle = msg.customTitle || null;
-        showNotification(msg.ticketNumber, msg.ticketDescription, msg.severity, customTitle);
+        const queueUrl = msg.queueUrl || null;
+        showNotification(msg.ticketNumber, msg.ticketDescription, msg.severity, customTitle, queueUrl);
         sendResponse({ success: true });
     }
 });
@@ -249,13 +250,19 @@ async function getQueues(items) {
                 console.log('✅ Triggering - Count > 0 condition met');
                 await audioNotification();
                 
-                // Also create notification for non-zero count (limited to max 5 per queue)
+                // Also create notification for non-zero count
                 if (latestData) {
                     const customTitle = totalCount > 0 ? 'Tickets Available' : 'No Tickets';
-                    const queueUrl = urls.length === 1 ? items.primary : (latestData === results[0] ? items.primary : items.secondary);
-                    
-                    // For "Count > 0" condition, show only 1 notification per queue
-                    // This prevents flooding when there are many existing tickets
+                    // Get the appropriate queue URL
+                    let queueUrl = items.primary;
+                    if (urls.length === 2 && totalCount > 0) {
+                        // For dual queues, use the URL of the queue with tickets
+                        if (results[0].quantity > 0) {
+                            queueUrl = items.primary;
+                        } else if (results[1].quantity > 0) {
+                            queueUrl = items.secondary;
+                        }
+                    }
                     showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, queueUrl);
                 }
                 
@@ -271,34 +278,23 @@ async function getQueues(items) {
                 const difference = state.newList.filter(x => !previousList.includes(x));
                 console.log('New tickets detected (difference):', difference);
                 
-                // Limit notifications to maximum 5 per queue to prevent flooding
-                let limitedDifference = difference;
-                if (difference.length > 5) {
-                    limitedDifference = difference.slice(0, 5);
-                    console.log('Limited notifications to first 5 tickets out of', difference.length, 'new tickets');
-                }
-                
                 // Only trigger if:
                 // 1. This is not the first run (previousList is not empty)
                 // 2. There are actual new tickets (difference > 0)
-                if (previousList.length > 0 && limitedDifference.length > 0) {
+                if (previousList.length > 0 && difference.length > 0) {
                     console.log('✅ Triggering audio - new tickets condition met');
-                    console.log('New tickets to notify:', limitedDifference);
+                    console.log('New tickets:', difference);
                     await audioNotification();
                     
-                    // Create separate notifications for each ticket (max 5 per queue)
-                    for (let i = 0; i < limitedDifference.length; i++) {
-                        const ticketNumber = limitedDifference[i];
+                    // Create notification for new tickets
+                    if (latestData) {
                         let customTitle;
                         let queueUrl;
-                        
                         if (urls.length === 1) {
-                            // Single queue - use Queue 1 text and URL
                             customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
                             queueUrl = items.primary;
                         } else {
-                            // Dual queue - determine which queue this ticket belongs to
-                            // For simplicity, we'll use the queue that triggered the notification
+                            // Determine which queue triggered the notification
                             if (latestData === results[0]) {
                                 customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
                                 queueUrl = items.primary;
@@ -307,17 +303,7 @@ async function getQueues(items) {
                                 queueUrl = items.secondary;
                             }
                         }
-                        
-                        // Get ticket description (simplified for individual notifications)
-                        const ticketDescription = `New ticket ${ticketNumber} assigned`;
-                        
-                        // Create notification for this specific ticket
-                        showNotification(ticketNumber, ticketDescription, latestData.severity, customTitle, queueUrl);
-                        
-                        // Small delay between notifications to prevent overwhelming
-                        if (i < limitedDifference.length - 1) {
-                            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
-                        }
+                        showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle, queueUrl);
                     }
                 } else {
                     console.log('❌ No new tickets - audio not triggered');
@@ -526,24 +512,23 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
             iconUrl = chrome.runtime.getURL('images/ITSM128.png');
     }
     
-    // Generate unique notification ID for each ticket
-    const notificationId = `ticket_${ticketNumber}_${Date.now()}`;
-    
     const notificationOptions = {
         type: 'basic',
         iconUrl: iconUrl,
         title: notificationTitle,
         message: ticketDescription,
-        requireInteraction: true, // Keep notification visible until user interacts
-        priority: 2, // High priority
-        isClickable: true // Make notification clickable
+        requireInteraction: true, // Keep notification in notification center
+        isClickable: true // Allow clicking on notification
     };
     
     console.log('Notification options:', notificationOptions);
     console.log('Icon URL:', iconUrl);
     console.log('Priority:', priority, 'Label:', getPriorityLabel(priority));
     
-    chrome.notifications.create(notificationId, notificationOptions, async function(notificationId) {
+    // Create notification with unique ID based on ticket number
+    const notificationId = `ticket_${ticketNumber}_${Date.now()}`;
+    
+    chrome.notifications.create(notificationId, notificationOptions, function(notificationId) {
         if (chrome.runtime.lastError) {
             console.error('Notification creation error:', chrome.runtime.lastError);
             // Try fallback without icon if image fails
@@ -552,10 +537,9 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
                 title: notificationTitle,
                 message: ticketDescription,
                 requireInteraction: true,
-                priority: 2,
                 isClickable: true
             };
-            chrome.notifications.create(`fallback_${Date.now()}`, fallbackOptions, function(fallbackId) {
+            chrome.notifications.create(`fallback_${notificationId}`, fallbackOptions, function(fallbackId) {
                 if (chrome.runtime.lastError) {
                     console.error('Fallback notification also failed:', chrome.runtime.lastError);
                 } else {
@@ -565,115 +549,101 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
         } else {
             console.log('Notification created with ID:', notificationId);
             
-            // Store the queue URL for click handling
+            // Store queue URL for this notification ID
             if (queueUrl) {
-                await chrome.storage.local.set({ lastNotificationQueueUrl: queueUrl });
-                console.log('Stored queue URL for notification click:', queueUrl);
+                chrome.storage.local.set({
+                    [`notification_${notificationId}`]: queueUrl
+                }).catch(err => console.log('Could not store notification URL:', err));
             }
         }
     });
     
-    // Auto-clear notification after 8 seconds (increased from 5)
-    setTimeout(function() {
-        chrome.notifications.clear(notificationId, function() {
-            if (chrome.runtime.lastError) {
-                console.log('Failed to clear notification:', chrome.runtime.lastError);
-            } else {
-                console.log('Notification cleared after 8 seconds:', notificationId);
+    // Auto-clear after 8 seconds (increased from 5)
+    setTimeout(function(){
+        chrome.notifications.clear(notificationId, function(wasCleared) {
+            if (wasCleared) {
+                console.log('Notification auto-cleared:', notificationId);
+                // Mark this as auto-clear and clean up stored URL
+                chrome.storage.local.set({
+                    [`notification_${notificationId}_autoclear`]: true
+                });
+                chrome.storage.local.remove(`notification_${notificationId}`);
+                console.log('Notification URL cleaned up, audio continues for auto-clear');
             }
         });
-    }, 8000); // 8 seconds instead of 5
+    }, 8000); // 8 seconds
 }
 
-// Notification click handler - opens appropriate ServiceNow page based on notification
+// Notification click handler - opens the specific queue URL
 chrome.notifications.onClicked.addListener(async (notificationId) => {
     console.log('Notification clicked:', notificationId);
     
-    // Extract queue URL from notification ID or storage
-    chrome.storage.local.get(['lastNotificationQueueUrl'], async function(result) {
-        let queueUrl = result.lastNotificationQueueUrl;
-        
-        // Fallback to primary URL if no specific queue URL stored
-        if (!queueUrl) {
-            const items = await chrome.storage.sync.get(['primary', 'secondary']);
-            queueUrl = items.primary || items.secondary;
-        }
+    try {
+        // Get the stored queue URL for this notification
+        const result = await chrome.storage.local.get([`notification_${notificationId}`]);
+        const queueUrl = result[`notification_${notificationId}`];
         
         if (queueUrl) {
             console.log('Opening queue URL:', queueUrl);
-            chrome.tabs.create({ url: queueUrl });
+            // Create new tab with the queue URL
+            await chrome.tabs.create({ url: queueUrl });
+            
+            // Clear the notification after clicking
+            chrome.notifications.clear(notificationId);
+            // Clean up stored URL
+            chrome.storage.local.remove(`notification_${notificationId}`);
         } else {
-            console.log('No queue URL available to open');
-            // Fallback to root URL
-            chrome.storage.sync.get(['rooturl'], function(rootResult) {
-                if (rootResult.rooturl) {
-                    chrome.tabs.create({ url: rootResult.rooturl });
-                }
-            });
+            console.log('No queue URL found for notification:', notificationId);
+            // Fallback to root URL if available
+            const rootResult = await chrome.storage.sync.get(['rooturl']);
+            if (rootResult.rooturl) {
+                await chrome.tabs.create({ url: rootResult.rooturl });
+            }
         }
-    });
+    } catch (error) {
+        console.error('Error handling notification click:', error);
+    }
 });
 
-function notificationClicked() {
-    chrome.storage.sync.get(['rooturl'], function(result) {
-        const rootURL = result.rooturl;
+// Notification close handler - stops audio when user manually closes notification
+chrome.notifications.onClosed.addListener(async (notificationId) => {
+    console.log('Notification closed:', notificationId);
+    
+    try {
+        // Check if this was an auto-clear (don't stop audio for auto-clear)
+        const result = await chrome.storage.local.get([`notification_${notificationId}_autoclear`]);
+        const isAutoClear = result[`notification_${notificationId}_autoclear`];
         
-        if (!rootURL || !state.ticketNumberGlobal) return;
-        
-        let urlTicketSearch;
-        const ticketPrefix = state.ticketNumberGlobal.substring(0, 3);
-        
-        switch (ticketPrefix) {
-            case "TAS":
-                urlTicketSearch = rootURL + "/sc_task.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "INC":
-                urlTicketSearch = rootURL + "/incident.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "CSP":
-                urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "CSR":
-                urlTicketSearch = rootURL + "/sn_customer_case.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "REQ":
-                urlTicketSearch = rootURL + "/sc_request.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "CHG":
-                urlTicketSearch = rootURL + "/change_request.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "RIT":
-                urlTicketSearch = rootURL + "/sc_req_item.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            case "CAL":
-                urlTicketSearch = rootURL + "/new_call.do?sys_id=" + state.ticketNumberGlobal;
-                break;
-            default:
-                urlTicketSearch = rootURL + "/task_list.do?sysparm_query=numberLIKE" + state.ticketNumberGlobal + "&sysparm_first_row=1&sysparm_view=";
+        if (isAutoClear) {
+            console.log('Notification auto-cleared - audio continues playing');
+            // Clean up the auto-clear flag
+            chrome.storage.local.remove(`notification_${notificationId}_autoclear`);
+        } else {
+            console.log('Notification manually closed by user - stopping audio');
+            // Stop any playing audio only for manual close
+            await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
+            console.log('Audio stopped due to manual notification close');
         }
-
-        try {
-            chrome.tabs.create({
-                'url': urlTicketSearch
-            });
-        } catch (error) {
-            console.error('Error opening ticket:', error);
-        }
-    });
-}
+        
+        // Always clean up stored URL
+        chrome.storage.local.remove(`notification_${notificationId}`);
+    } catch (error) {
+        console.error('Error handling notification close:', error);
+    }
+});
 
 // Helper function to get priority label
 function getPriorityLabel(severity) {
     const priorityMap = {
-        "1": "🔴 CRITICAL",
-        "2": "🟠 HIGH", 
-        "3": "🟡 MEDIUM",
-        "4": "🟢 LOW",
-        "5": "🔵 PLANNED",
-        "10": "📋 SERVICE REQUEST",
-        "15": "🔄 CHANGE"
+        "1": "CRITICAL",
+        "2": "HIGH", 
+        "3": "MEDIUM",
+        "4": "LOW",
+        "5": "PLANNED",
+        "10": "SERVICE REQUEST",
+        "15": "CHANGE"
     };
-    return priorityMap[severity] || "📋 TASK";
+    return priorityMap[severity] || "TASK";
 }
 
 async function openTicketInServiceNow(ticketNumber) {
