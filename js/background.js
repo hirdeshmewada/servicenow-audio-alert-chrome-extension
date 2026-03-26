@@ -249,10 +249,13 @@ async function getQueues(items) {
                 console.log('✅ Triggering - Count > 0 condition met');
                 await audioNotification();
                 
-                // Also create notification for non-zero count
+                // Also create notification for non-zero count (limited to max 5 per queue)
                 if (latestData) {
                     const customTitle = totalCount > 0 ? 'Tickets Available' : 'No Tickets';
                     const queueUrl = urls.length === 1 ? items.primary : (latestData === results[0] ? items.primary : items.secondary);
+                    
+                    // For "Count > 0" condition, show only 1 notification per queue
+                    // This prevents flooding when there are many existing tickets
                     showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, queueUrl);
                 }
                 
@@ -268,23 +271,34 @@ async function getQueues(items) {
                 const difference = state.newList.filter(x => !previousList.includes(x));
                 console.log('New tickets detected (difference):', difference);
                 
+                // Limit notifications to maximum 5 per queue to prevent flooding
+                let limitedDifference = difference;
+                if (difference.length > 5) {
+                    limitedDifference = difference.slice(0, 5);
+                    console.log('Limited notifications to first 5 tickets out of', difference.length, 'new tickets');
+                }
+                
                 // Only trigger if:
                 // 1. This is not the first run (previousList is not empty)
                 // 2. There are actual new tickets (difference > 0)
-                if (previousList.length > 0 && difference.length > 0) {
+                if (previousList.length > 0 && limitedDifference.length > 0) {
                     console.log('✅ Triggering audio - new tickets condition met');
-                    console.log('New tickets:', difference);
+                    console.log('New tickets to notify:', limitedDifference);
                     await audioNotification();
                     
-                    // Create notification for new tickets
-                    if (latestData) {
+                    // Create separate notifications for each ticket (max 5 per queue)
+                    for (let i = 0; i < limitedDifference.length; i++) {
+                        const ticketNumber = limitedDifference[i];
                         let customTitle;
                         let queueUrl;
+                        
                         if (urls.length === 1) {
+                            // Single queue - use Queue 1 text and URL
                             customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
                             queueUrl = items.primary;
                         } else {
-                            // Determine which queue triggered notification
+                            // Dual queue - determine which queue this ticket belongs to
+                            // For simplicity, we'll use the queue that triggered the notification
                             if (latestData === results[0]) {
                                 customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
                                 queueUrl = items.primary;
@@ -293,7 +307,17 @@ async function getQueues(items) {
                                 queueUrl = items.secondary;
                             }
                         }
-                        showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle, queueUrl);
+                        
+                        // Get ticket description (simplified for individual notifications)
+                        const ticketDescription = `New ticket ${ticketNumber} assigned`;
+                        
+                        // Create notification for this specific ticket
+                        showNotification(ticketNumber, ticketDescription, latestData.severity, customTitle, queueUrl);
+                        
+                        // Small delay between notifications to prevent overwhelming
+                        if (i < limitedDifference.length - 1) {
+                            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+                        }
                     }
                 } else {
                     console.log('❌ No new tickets - audio not triggered');
