@@ -217,39 +217,93 @@ function updateMonitoringStatus() {
     updateMonitoringButton();
 }
 
-// URL validation function
+// Enhanced ServiceNow URL validation function
 function validateServiceNowURL(url) {
     if (!url || typeof url !== 'string') return false;
     try {
-        const urlObj = new URL(url);
+        // Handle new ServiceNow UI URLs with multiple encoding
+        let processedUrl = url;
+        if (url.includes('/now/nav/ui/classic/params/target/')) {
+            console.log('Detected new ServiceNow UI URL in validation, processing...');
+            
+            const targetMatch = url.match(/params\/target\/(.+)$/);
+            if (targetMatch) {
+                let targetUrl = targetMatch[1];
+                
+                // Progressive decoding - handle multiple encoding levels
+                let decodedUrl = progressiveDecode(targetUrl);
+                console.log('Progressively decoded URL for validation:', decodedUrl);
+                
+                // Rebuild full URL
+                const urlMatch = url.match(/(https:\/\/[^\/]+)/);
+                if (urlMatch) {
+                    processedUrl = urlMatch[1] + '/' + decodedUrl;
+                    console.log('Rebuilt URL for validation:', processedUrl);
+                }
+            }
+        }
+        
+        const urlObj = new URL(processedUrl);
         return urlObj.protocol === 'https:' && urlObj.hostname.includes('service-now.com');
-    } catch {
+    } catch (error) {
+        console.error('URL validation error:', error);
         return false;
     }
+}
+
+// Progressive decoding for multiple encoding levels (copied from background.js)
+function progressiveDecode(encodedString) {
+    let decoded = encodedString;
+    let previousDecoded;
+    let decodeCount = 0;
+    const maxDecodes = 5; // Prevent infinite loops
+    
+    do {
+        previousDecoded = decoded;
+        try {
+            decoded = decodeURIComponent(decoded);
+            decodeCount++;
+        } catch (e) {
+            console.log('Decoding failed at iteration', decodeCount + 1, ':', e.message);
+            break;
+        }
+    } while (decoded !== previousDecoded && decodeCount < maxDecodes);
+    
+    return decoded;
 }
 
 // Save options with validation
 async function saveOptions() {
     try {
+        console.log('=== SAVING OPTIONS ===');
         const primary = document.getElementById('idprimaryq')?.value || '';
         const rooturl = document.getElementById('idrooturl')?.value || '';
         const secondary = document.getElementById('idsecondaryq')?.value || '';
         
+        console.log('Primary URL:', primary);
+        console.log('Root URL:', rooturl);
+        console.log('Secondary URL:', secondary);
+        
         // Validate URLs
         if (primary && !validateServiceNowURL(primary)) {
+            console.error('Primary URL validation failed:', primary);
             showErrorMessage('Primary URL must be a valid ServiceNow HTTPS URL');
             return;
         }
         
         if (secondary && !validateServiceNowURL(secondary)) {
+            console.error('Secondary URL validation failed:', secondary);
             showErrorMessage('Secondary URL must be a valid ServiceNow HTTPS URL');
             return;
         }
         
         if (rooturl && !validateServiceNowURL(rooturl)) {
+            console.error('Root URL validation failed:', rooturl);
             showErrorMessage('Base URL must be a valid ServiceNow HTTPS URL');
             return;
         }
+        
+        console.log('All URLs validated successfully!');
         
         // Parse and validate poll interval
         let pollInterval = parseInt(document.getElementById('pollInterval')?.value || '5', 10);
@@ -268,6 +322,8 @@ async function saveOptions() {
             alarmCondition: document.querySelector("input[name='alarmCondition']:checked")?.value || 'nonZeroCount'
         };
         
+        console.log('Save data:', saveData);
+        
         await chrome.storage.sync.set(saveData);
         
         // Update queue URLs in the UI
@@ -277,6 +333,7 @@ async function saveOptions() {
         chrome.runtime.sendMessage({ type: 'SNOW_AUDIO_ALERT_OPTIONS_UPDATED' });
         
         console.log('Options saved successfully');
+        showSuccessMessage('✅ Configuration saved successfully!');
         
     } catch (error) {
         console.error('Error saving options:', error);

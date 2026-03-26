@@ -578,6 +578,10 @@ function validateURL(url) {
     try {
         const urlObj = new URL(url);
         return urlObj.protocol === 'https:' && urlObj.hostname.includes('service-now.com');
+    } catch {
+        return false;
+    }
+}
 
 function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
@@ -698,6 +702,8 @@ function extractServiceNowQuery(url) {
 function parseEncodedQuery(query) {
     const conditions = [];
     
+    // Split by ^ operators (ServiceNow encoded query format)
+    const parts = query.split('^');
     let currentCondition = {};
     
     for (let i = 0; i < parts.length; i++) {
