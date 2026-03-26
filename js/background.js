@@ -139,6 +139,10 @@ async function getQueues(items) {
     const primaryURL = changeURLforRESTAPI(items.primary);
     const secondaryURL = changeURLforRESTAPI(items.secondary);
     state.rootURL = items.rooturl;
+    
+    // Store current newList as oldList before we start fetching new data
+    state.oldList = [...state.newList];
+    // Clear newList to populate with fresh data
     state.newList = [];
 
     const urls = [];
@@ -250,9 +254,6 @@ async function getQueues(items) {
             console.log('Audio disabled');
         }
 
-        // Update lists for next comparison
-        state.oldList = [...state.newList];
-        
         // Send ticket updates to options page
         await sendTicketUpdateToOptions();
         
@@ -272,24 +273,57 @@ async function getQueues(items) {
 
 async function getDataREST(url) {
     try {
-        const response = await fetch(url + '&sysparm_limit=1000', {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-        });
+        console.log('Fetching data from URL:', url);
+        
+        // Check if this is a new ServiceNow UI URL
+        const isNewServiceNowUI = url.includes('/now/nav/ui/classic/params/target/');
+        
+        let response;
+        if (isNewServiceNowUI) {
+            console.log('New ServiceNow UI URL detected - trying direct call');
+            response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Content-Type': 'text/html'
+                }
+            });
+        } else {
+            console.log('Standard REST API URL - adding JSON parameters');
+            response = await fetch(url + '&sysparm_limit=1000', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const data = await response.json();
-        const records = data.records || [];
+        let data, records;
+        
+        if (isNewServiceNowUI) {
+            console.log('Processing ServiceNow UI response');
+            const responseText = await response.text();
+            console.log('ServiceNow UI response type:', response.headers.get('content-type'));
+            console.log('ServiceNow UI response (first 500 chars):', responseText.substring(0, 500));
+            
+            // For now, return empty result since we can't parse HTML easily
+            data = { records: [] };
+            records = [];
+        } else {
+            console.log('Processing JSON REST API response');
+            data = await response.json();
+            records = data.records || [];
+        }
         
         // Console logging for URL data - print the main table records
         console.log(`=== URL DATA DEBUG ===`);
         console.log(`URL: ${url}`);
+        console.log(`Is New ServiceNow UI: ${isNewServiceNowUI}`);
         console.log(`Full response data:`, data);
         console.log(`Records array (main table):`, records);
         console.log(`Number of records: ${records.length}`);
@@ -583,11 +617,22 @@ function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
 
     try {
-        const urlObj = new URL(url);
+        let processedURL = url;
+        
+        // Handle new ServiceNow UI URLs - try direct call first
+        if (url.includes('/now/nav/ui/classic/params/target/')) {
+            console.log('Processing new ServiceNow UI URL format');
+            
+            // Try direct approach - call the URL as-is and see what we get
+            console.log('Attempting direct call to new ServiceNow UI URL');
+            return url; // Return the URL as-is for direct testing
+        }
+        
+        const urlObj = new URL(processedURL);
         
         // Validate it's a ServiceNow URL
         if (!urlObj.hostname.includes('service-now.com')) {
-            console.warn('URL does not appear to be a ServiceNow instance:', url);
+            console.warn('URL does not appear to be a ServiceNow instance:', processedURL);
             return undefined;
         }
 
@@ -602,6 +647,7 @@ function changeURLforRESTAPI(url) {
         const separator = restURL.includes('?') ? '&' : '?';
         restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
         
+        console.log('Final REST API URL:', restURL);
         return restURL;
     } catch (error) {
         console.error('Error processing URL:', error);
