@@ -48,7 +48,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg && msg.type === "TEST_NOTIFICATION") {
         // Handle test notification request
         console.log('Creating test notification:', msg);
-        showNotification(msg.ticketNumber, msg.ticketDescription, msg.severity);
+        const customTitle = msg.customTitle || null;
+        showNotification(msg.ticketNumber, msg.ticketDescription, msg.severity, customTitle);
         sendResponse({ success: true });
     }
 });
@@ -75,7 +76,8 @@ async function getSavedData() {
     try {
         const items = await chrome.storage.sync.get([
             'rooturl', 'secondary', 'primary', 'splitcount', 
-            'disableAlarm', 'disablePoll', 'alarmCondition', 'pollInterval'
+            'disableAlarm', 'disablePoll', 'alarmCondition', 'pollInterval',
+            'primaryNotificationText', 'secondaryNotificationText'
         ]);
         
         await scheduleAlarmFromItems(items);
@@ -185,7 +187,8 @@ async function getQueues(items) {
             if (state.currentNumberTotal < totalCount) {
                 console.log('Single queue - New tickets detected, triggering notification');
                 state.ticketNumberGlobal = data.number;
-                showNotification(data.number, data.description || 'New ticket assigned', data.severity);
+                const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                showNotification(data.number, data.description || 'New ticket assigned', data.severity, customTitle);
                 shouldNotify = true;
             } else {
                 console.log('Single queue - No new tickets');
@@ -204,7 +207,16 @@ async function getQueues(items) {
                     console.log('Dual queue - New ticket detected, triggering notification');
                     state.newStamp = latestData.timestamp;
                     state.ticketNumberGlobal = latestData.number;
-                    showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity);
+                    
+                    // Determine which queue triggered the notification and use its custom text
+                    let customTitle;
+                    if (latestData === data1) {
+                        customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                    } else {
+                        customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
+                    }
+                    
+                    showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle);
                     shouldNotify = true;
                 } else {
                     console.log('Dual queue - Ticket count increased but no newer timestamp');
@@ -424,8 +436,11 @@ async function audioNotification() {
     }
 }
 
-function showNotification(ticketNumber, ticketDescription, severity) {
-    console.log('Creating notification:', { ticketNumber, ticketDescription, severity });
+function showNotification(ticketNumber, ticketDescription, severity, customTitle = null) {
+    console.log('Creating notification:', { ticketNumber, ticketDescription, severity, customTitle });
+    
+    // Use custom title if provided, otherwise use default
+    const notificationTitle = customTitle || `${getPriorityLabel(parseInt(severity) || 5)} | ${ticketNumber}`;
     
     // Determine icon based on priority/severity
     let iconUrl;
@@ -446,20 +461,16 @@ function showNotification(ticketNumber, ticketDescription, severity) {
             iconUrl = chrome.runtime.getURL('images/ITSM128.png');
     }
     
-    // Enhanced notification title with priority
-    const priorityLabel = getPriorityLabel(priority);
-    const enhancedTitle = `${priorityLabel} | ${ticketNumber}`;
-    
     const notificationOptions = {
         type: 'basic',
         iconUrl: iconUrl,
-        title: enhancedTitle,
+        title: notificationTitle,
         message: ticketDescription
     };
     
     console.log('Notification options:', notificationOptions);
     console.log('Icon URL:', iconUrl);
-    console.log('Priority:', priority, 'Label:', priorityLabel);
+    console.log('Priority:', priority, 'Label:', getPriorityLabel(priority));
     
     chrome.notifications.create('reminder', notificationOptions, function(notificationId) {
         if (chrome.runtime.lastError) {
@@ -467,7 +478,7 @@ function showNotification(ticketNumber, ticketDescription, severity) {
             // Try fallback without icon if image fails
             const fallbackOptions = {
                 type: 'basic',
-                title: ticketNumber,
+                title: notificationTitle,
                 message: ticketDescription
             };
             chrome.notifications.create('reminder_fallback', fallbackOptions, function(fallbackId) {

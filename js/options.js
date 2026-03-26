@@ -77,7 +77,7 @@ function setupEventListeners() {
     if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
     
     // Input field listeners for auto-save
-    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq'];
+    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText'];
     autoSaveFields.forEach(fieldId => {
         const field = document.getElementById(fieldId);
         if (field) {
@@ -344,7 +344,9 @@ async function saveOptions() {
             splitcount: document.getElementById('splitcount')?.value || 'false',
             disableAlarm: document.getElementById('disableAlarm')?.checked ? 'on' : 'off',
             disablePoll: document.getElementById('disablePoll')?.checked ? 'on' : 'off',
-            alarmCondition: document.querySelector("input[name='alarmCondition']:checked")?.value || 'nonZeroCount'
+            alarmCondition: document.querySelector("input[name='alarmCondition']:checked")?.value || 'nonZeroCount',
+            primaryNotificationText: document.getElementById('primaryNotificationText')?.value?.trim() || 'New tickets in Queue 1',
+            secondaryNotificationText: document.getElementById('secondaryNotificationText')?.value?.trim() || 'New tickets in Queue 2'
         };
         
         console.log('Save data:', saveData);
@@ -457,7 +459,8 @@ async function restoreOptions() {
     try {
         const items = await chrome.storage.sync.get([
             'rooturl', 'primary', 'secondary', 'disableAlarm', 
-            'disablePoll', 'pollInterval', 'alarmCondition', 'splitcount'
+            'disablePoll', 'pollInterval', 'alarmCondition', 'splitcount',
+            'primaryNotificationText', 'secondaryNotificationText'
         ]);
         
         // Restore URLs
@@ -468,6 +471,17 @@ async function restoreOptions() {
         };
         
         Object.entries(urlFields).forEach(([fieldId, value]) => {
+            const field = document.getElementById(fieldId);
+            if (field) field.value = value;
+        });
+
+        // Restore notification text fields
+        const notificationTextFields = {
+            'primaryNotificationText': items.primaryNotificationText || 'New tickets in Queue 1',
+            'secondaryNotificationText': items.secondaryNotificationText || 'New tickets in Queue 2'
+        };
+        
+        Object.entries(notificationTextFields).forEach(([fieldId, value]) => {
             const field = document.getElementById(fieldId);
             if (field) field.value = value;
         });
