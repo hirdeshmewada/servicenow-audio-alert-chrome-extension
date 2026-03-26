@@ -583,6 +583,29 @@ function validateURL(url) {
     }
 }
 
+// Progressive decoding for multiple encoding levels - moved to top to fix ReferenceError
+function progressiveDecode(encodedString) {
+    let decoded = encodedString;
+    let previousDecoded;
+    let decodeCount = 0;
+    const maxDecodes = 5; // Prevent infinite loops
+    
+    do {
+        previousDecoded = decoded;
+        try {
+            decoded = decodeURIComponent(decoded);
+            decodeCount++;
+            console.log(`Decode iteration ${decodeCount}:`, decoded);
+        } catch (e) {
+            console.log('Decoding failed at iteration', decodeCount + 1, ':', e.message);
+            break;
+        }
+    } while (decoded !== previousDecoded && decodeCount < maxDecodes);
+    
+    console.log(`Total decode iterations: ${decodeCount}`);
+    return decoded;
+}
+
 function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
 
