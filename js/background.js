@@ -273,57 +273,24 @@ async function getQueues(items) {
 
 async function getDataREST(url) {
     try {
-        console.log('Fetching data from URL:', url);
-        
-        // Check if this is a new ServiceNow UI URL
-        const isNewServiceNowUI = url.includes('/now/nav/ui/classic/params/target/');
-        
-        let response;
-        if (isNewServiceNowUI) {
-            console.log('New ServiceNow UI URL detected - trying direct call');
-            response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Content-Type': 'text/html'
-                }
-            });
-        } else {
-            console.log('Standard REST API URL - adding JSON parameters');
-            response = await fetch(url + '&sysparm_limit=1000', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                }
-            });
-        }
+        const response = await fetch(url + '&sysparm_limit=1000', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        let data, records;
-        
-        if (isNewServiceNowUI) {
-            console.log('Processing ServiceNow UI response');
-            const responseText = await response.text();
-            console.log('ServiceNow UI response type:', response.headers.get('content-type'));
-            console.log('ServiceNow UI response (first 500 chars):', responseText.substring(0, 500));
-            
-            // For now, return empty result since we can't parse HTML easily
-            data = { records: [] };
-            records = [];
-        } else {
-            console.log('Processing JSON REST API response');
-            data = await response.json();
-            records = data.records || [];
-        }
+        const data = await response.json();
+        const records = data.records || [];
         
         // Console logging for URL data - print the main table records
         console.log(`=== URL DATA DEBUG ===`);
         console.log(`URL: ${url}`);
-        console.log(`Is New ServiceNow UI: ${isNewServiceNowUI}`);
         console.log(`Full response data:`, data);
         console.log(`Records array (main table):`, records);
         console.log(`Number of records: ${records.length}`);
@@ -619,13 +586,61 @@ function changeURLforRESTAPI(url) {
     try {
         let processedURL = url;
         
-        // Handle new ServiceNow UI URLs - try direct call first
+        // Handle new ServiceNow UI URLs - extract filters and convert to REST API
         if (url.includes('/now/nav/ui/classic/params/target/')) {
             console.log('Processing new ServiceNow UI URL format');
             
-            // Try direct approach - call the URL as-is and see what we get
-            console.log('Attempting direct call to new ServiceNow UI URL');
-            return url; // Return the URL as-is for direct testing
+            // Extract the encoded target URL
+            const urlParts = url.split('/params/target/');
+            if (urlParts.length < 2) {
+                console.error('Invalid new ServiceNow URL format');
+                return undefined;
+            }
+            
+            // Get the base URL and the encoded target
+            const urlObj = new URL(url);
+            const encodedTarget = urlParts[1];
+            
+            // Decode the query parameters carefully (only the sysparm_query part)
+            let decodedTarget = decodeURIComponent(encodedTarget);
+            
+            // If still has encoded query params, decode again
+            if (decodedTarget.includes('%25') || decodedTarget.includes('%3F')) {
+                decodedTarget = decodeURIComponent(decodedTarget);
+                console.log('Applied double decoding for query parameters');
+            }
+            
+            // Extract table name and query parameters
+            let tableName = 'sn_customerservice_case'; // default
+            let queryParameters = '';
+            
+            if (decodedTarget.includes('incident_list')) {
+                tableName = 'incident';
+            } else if (decodedTarget.includes('sc_task_list')) {
+                tableName = 'sc_task';
+            } else if (decodedTarget.includes('change_request_list')) {
+                tableName = 'change_request';
+            } else if (decodedTarget.includes('sn_customerservice_case_list')) {
+                tableName = 'sn_customerservice_case';
+            }
+            
+            // Extract the sysparm_query if it exists
+            const queryMatch = decodedTarget.match(/sysparm_query=([^&]+)/);
+            if (queryMatch) {
+                queryParameters = queryMatch[1];
+                console.log('Extracted query parameters:', queryParameters);
+            }
+            
+            // Build REST API URL with the extracted filters
+            let restURL = `${urlObj.protocol}//${urlObj.host}/api/now/table/${tableName}?JSONv2&sysparm_limit=1000&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
+            
+            // Add the extracted query parameters to preserve filters
+            if (queryParameters) {
+                restURL += `&sysparm_query=${encodeURIComponent(queryParameters)}`;
+            }
+            
+            console.log('Converted new UI URL to REST API with filters:', restURL);
+            return restURL;
         }
         
         const urlObj = new URL(processedURL);
