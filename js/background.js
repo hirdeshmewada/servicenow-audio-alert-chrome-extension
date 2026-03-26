@@ -31,6 +31,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // Message listener for options page updates
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.type === "SNOW_AUDIO_ALERT_OPTIONS_UPDATED") {
+        console.log('=== OPTIONS UPDATED - RELOADING CONFIGURATION ===');
         getSavedData();
     } else if (msg && msg.type === "REQUEST_TICKET_DATA") {
         // Send current ticket data to options page
@@ -97,15 +98,21 @@ async function scheduleAlarmFromItems(items) {
     console.log('Scheduling alarm - pollEnabled:', pollEnabled, 'minutes:', minutes);
     console.log('Current state - scheduledPollEnabled:', state.scheduledPollEnabled, 'scheduledPollMinutes:', state.scheduledPollMinutes);
 
-    // Only reconfigure alarms when state changes
-    if (state.scheduledPollEnabled === pollEnabled && state.scheduledPollMinutes === minutes) {
+    // Always reconfigure when called from options update to ensure sync
+    const forceUpdate = state.scheduledPollEnabled !== pollEnabled || state.scheduledPollMinutes !== minutes;
+    
+    if (!forceUpdate) {
         console.log('Alarm configuration unchanged, skipping');
         return;
     }
 
     // Clear existing alarm
-    await chrome.alarms.clear("CheckTicketsAlarm");
-    console.log('Cleared existing alarm');
+    try {
+        await chrome.alarms.clear("CheckTicketsAlarm");
+        console.log('Cleared existing alarm');
+    } catch (e) {
+        console.log('No existing alarm to clear:', e.message);
+    }
 
     if (pollEnabled) {
         await chrome.alarms.create("CheckTicketsAlarm", {
@@ -240,11 +247,15 @@ async function getQueues(items) {
                 // Check for new tickets by comparing previous and new lists
                 const difference = state.newList.filter(x => !previousList.includes(x));
                 console.log('New tickets detected:', difference);
+                console.log('Previous list length:', previousList.length, 'New list length:', state.newList.length);
+                
                 if (difference.length > 0) {
                     console.log('Triggering audio - new tickets condition met');
+                    console.log('New tickets:', difference);
                     await audioNotification();
                 } else {
                     console.log('No new tickets - audio not triggered');
+                    console.log('All new tickets were already in previous list');
                 }
             } else {
                 console.log('No audio trigger - conditions not met');
