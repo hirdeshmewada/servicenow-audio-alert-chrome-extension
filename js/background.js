@@ -492,7 +492,32 @@ async function audioNotification() {
     }
 }
 
-function showNotification(ticketNumber, ticketDescription, severity, customTitle = null, queueUrl = null) {
+// Notification queue system to prevent flooding
+let notificationQueue = [];
+let isProcessingNotifications = false;
+
+// Process notifications one by one
+async function processNotificationQueue() {
+    if (isProcessingNotifications || notificationQueue.length === 0) {
+        return;
+    }
+    
+    isProcessingNotifications = true;
+    
+    while (notificationQueue.length > 0) {
+        const notification = notificationQueue.shift();
+        await createNotificationWithDelay(notification);
+        // Wait 2 seconds between notifications to prevent flooding
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    isProcessingNotifications = false;
+}
+
+// Create notification with proper delay management
+async function createNotificationWithDelay(notificationData) {
+    const { ticketNumber, ticketDescription, severity, customTitle, queueUrl } = notificationData;
+    
     console.log('Creating notification:', { ticketNumber, ticketDescription, severity, customTitle, queueUrl });
     
     // Use custom title if provided, otherwise use default
@@ -522,7 +547,7 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
         iconUrl: iconUrl,
         title: notificationTitle,
         message: ticketDescription,
-        requireInteraction: true, // Keep notification in notification center
+        requireInteraction: false, // Don't require interaction - will auto-dismiss
         isClickable: true // Allow clicking on notification
     };
     
@@ -541,7 +566,7 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
                 type: 'basic',
                 title: notificationTitle,
                 message: ticketDescription,
-                requireInteraction: true,
+                requireInteraction: false,
                 isClickable: true
             };
             chrome.notifications.create(`fallback_${notificationId}`, fallbackOptions, function(fallbackId) {
@@ -549,6 +574,12 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
                     console.error('Fallback notification also failed:', chrome.runtime.lastError);
                 } else {
                     console.log('Fallback notification created with ID:', fallbackId);
+                    // Store queue URL for fallback
+                    if (queueUrl) {
+                        chrome.storage.local.set({
+                            [`notification_${fallbackId}`]: queueUrl
+                        }).catch(err => console.log('Could not store notification URL:', err));
+                    }
                 }
             });
         } else {
@@ -563,20 +594,32 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
         }
     });
     
-    // Auto-clear after 8 seconds (increased from 5)
+    // Auto-clear popup after 8 seconds but keep in notification center
     setTimeout(function(){
         chrome.notifications.clear(notificationId, function(wasCleared) {
             if (wasCleared) {
-                console.log('Notification auto-cleared:', notificationId);
-                // Mark this as auto-clear and clean up stored URL
-                chrome.storage.local.set({
-                    [`notification_${notificationId}_autoclear`]: true
-                });
+                console.log('Notification popup cleared after 8 seconds:', notificationId);
+                // Clean up stored URL
                 chrome.storage.local.remove(`notification_${notificationId}`);
-                console.log('Notification URL cleaned up, audio continues for auto-clear');
+                console.log('Notification popup dismissed, but remains in notification center');
             }
         });
     }, 8000); // 8 seconds
+}
+
+// Updated showNotification function to use queue system
+function showNotification(ticketNumber, ticketDescription, severity, customTitle = null, queueUrl = null) {
+    // Add to queue instead of creating immediately
+    notificationQueue.push({
+        ticketNumber,
+        ticketDescription,
+        severity,
+        customTitle,
+        queueUrl
+    });
+    
+    // Start processing queue
+    processNotificationQueue();
 }
 
 // Notification click handler - opens the specific queue URL
@@ -615,20 +658,11 @@ chrome.notifications.onClosed.addListener(async (notificationId) => {
     console.log('Notification closed:', notificationId);
     
     try {
-        // Check if this was an auto-clear (don't stop audio for auto-clear)
-        const result = await chrome.storage.local.get([`notification_${notificationId}_autoclear`]);
-        const isAutoClear = result[`notification_${notificationId}_autoclear`];
-        
-        if (isAutoClear) {
-            console.log('Notification auto-cleared - audio continues playing');
-            // Clean up the auto-clear flag
-            chrome.storage.local.remove(`notification_${notificationId}_autoclear`);
-        } else {
-            console.log('Notification manually closed by user - stopping audio');
-            // Stop any playing audio only for manual close
-            await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
-            console.log('Audio stopped due to manual notification close');
-        }
+        // Stop any playing audio when user manually closes
+        // (Auto-clear doesn't stop audio anymore since requireInteraction = false)
+        console.log('Notification closed by user or auto-clear - stopping audio');
+        await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
+        console.log('Audio stopped due to notification close');
         
         // Always clean up stored URL
         chrome.storage.local.remove(`notification_${notificationId}`);
