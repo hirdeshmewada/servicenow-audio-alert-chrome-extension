@@ -251,27 +251,21 @@ async function getQueues(items) {
                 await audioNotification();
                 
                 // Also create notification for non-zero count
-                if (latestData) {
-                    let customTitle;
-                    let queueUrl;
-                    
-                    if (urls.length === 1) {
-                        customTitle = items.primaryNotificationText || 'Tickets Available';
-                        queueUrl = items.primary;
-                    } else {
-                        if (results[0].quantity > 0) {
-                            customTitle = items.primaryNotificationText || 'Tickets Available';
-                            queueUrl = items.primary;
-                        } else if (results[1].quantity > 0) {
-                            customTitle = items.secondaryNotificationText || 'Tickets Available';
-                            queueUrl = items.secondary;
-                        } else {
-                            customTitle = 'Tickets Available';
-                            queueUrl = null;
-                        }
+                if (urls.length === 1) {
+                    // Single queue - one notification
+                    const customTitle = items.primaryNotificationText || 'Tickets Available';
+                    showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, items.primary);
+                } else {
+                    // Dual queue - separate notifications for each queue
+                    if (results[0].quantity > 0) {
+                        const customTitle = items.primaryNotificationText || 'Queue 1 - Tickets Available';
+                        showNotification(results[0].number, results[0].description || 'Queue 1 tickets available', results[0].severity, customTitle, items.primary);
                     }
                     
-                    showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, queueUrl);
+                    if (results[1].quantity > 0) {
+                        const customTitle = items.secondaryNotificationText || 'Queue 2 - Tickets Available';
+                        showNotification(results[1].number, results[1].description || 'Queue 2 tickets available', results[1].severity, customTitle, items.secondary);
+                    }
                 }
                 
             } else if (items.alarmCondition === "alarmOnNewEntry") {
@@ -295,23 +289,26 @@ async function getQueues(items) {
                     await audioNotification();
                     
                     // Create notification for new tickets
-                    if (latestData) {
-                        let customTitle;
-                        let queueUrl;
-                        if (urls.length === 1) {
-                            customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
-                            queueUrl = items.primary;
-                        } else {
-                            // Determine which queue triggered the notification
-                            if (latestData === results[0]) {
-                                customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
-                                queueUrl = items.primary;
-                            } else {
-                                customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
-                                queueUrl = items.secondary;
-                            }
+                    if (urls.length === 1) {
+                        // Single queue - one notification
+                        const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                        showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle, items.primary);
+                    } else {
+                        // Dual queue - check which queue has new tickets and create separate notifications
+                        // For dual queues, we need to track which tickets come from which queue
+                        // Since we only have ticket numbers, we'll use the latestData to determine which queue triggered
+                        
+                        // Check if Queue 1 has new tickets
+                        if (results[0].quantity > 0 && difference.length > 0) {
+                            const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                            showNotification(results[0].number, results[0].description || 'New tickets in Queue 1', results[0].severity, customTitle, items.primary);
                         }
-                        showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle, queueUrl);
+                        
+                        // Check if Queue 2 has new tickets
+                        if (results[1].quantity > 0 && difference.length > 0) {
+                            const customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
+                            showNotification(results[1].number, results[1].description || 'New tickets in Queue 2', results[1].severity, customTitle, items.secondary);
+                        }
                     }
                 } else {
                     console.log('❌ No new tickets - audio not triggered');
