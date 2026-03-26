@@ -252,17 +252,25 @@ async function getQueues(items) {
                 
                 // Also create notification for non-zero count
                 if (latestData) {
-                    const customTitle = totalCount > 0 ? 'Tickets Available' : 'No Tickets';
-                    // Get the appropriate queue URL
-                    let queueUrl = items.primary;
-                    if (urls.length === 2 && totalCount > 0) {
-                        // For dual queues, use the URL of the queue with tickets
+                    let customTitle;
+                    let queueUrl;
+                    
+                    if (urls.length === 1) {
+                        customTitle = items.primaryNotificationText || 'Tickets Available';
+                        queueUrl = items.primary;
+                    } else {
                         if (results[0].quantity > 0) {
+                            customTitle = items.primaryNotificationText || 'Tickets Available';
                             queueUrl = items.primary;
                         } else if (results[1].quantity > 0) {
+                            customTitle = items.secondaryNotificationText || 'Tickets Available';
                             queueUrl = items.secondary;
+                        } else {
+                            customTitle = 'Tickets Available';
+                            queueUrl = null;
                         }
                     }
+                    
                     showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, queueUrl);
                 }
                 
