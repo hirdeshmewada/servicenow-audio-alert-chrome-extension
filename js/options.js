@@ -77,7 +77,7 @@ function setupEventListeners() {
     if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
     
     // Input field listeners for auto-save
-    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'pollInterval'];
+    const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq'];
     autoSaveFields.forEach(fieldId => {
         const field = document.getElementById(fieldId);
         if (field) {
@@ -89,6 +89,21 @@ function setupEventListeners() {
             });
         }
     });
+    
+    // Special handling for poll interval - immediate timer update
+    const pollIntervalField = document.getElementById('pollInterval');
+    if (pollIntervalField) {
+        pollIntervalField.addEventListener('focusout', () => {
+            saveOptions();
+            updateMonitoringStatus(); // Force timer restart with new interval
+        });
+        pollIntervalField.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                saveOptions();
+                updateMonitoringStatus(); // Force timer restart with new interval
+            }
+        });
+    }
 
     // Toggle listeners for immediate feedback
     const toggleFields = ['disableAlarm', 'disablePoll'];
@@ -189,11 +204,21 @@ function updateMonitoringStatus() {
     const disablePollCheckbox = document.getElementById('disablePoll');
     const pollIntervalInput = document.getElementById('pollInterval');
     
-    // Update poll interval
+    // Update poll interval with validation
+    const oldPollInterval = currentPollInterval;
     if (pollIntervalInput) {
         const interval = parseInt(pollIntervalInput.value, 10);
-        if (!isNaN(interval) && interval > 0) {
+        if (!isNaN(interval) && interval > 0 && interval !== currentPollInterval) {
             currentPollInterval = interval;
+            console.log('=== POLL INTERVAL UPDATED ===');
+            console.log('Old interval:', oldPollInterval, 'minutes');
+            console.log('New interval:', currentPollInterval, 'minutes');
+            
+            // Force restart countdown timer with new interval
+            if (isMonitoring && (!disablePollCheckbox || !disablePollCheckbox.checked)) {
+                console.log('Restarting countdown timer with new interval');
+                startCountdownTimer();
+            }
         }
     }
     
@@ -585,10 +610,11 @@ function updateTicketCounts(queueACount, queueBCount, totalCount) {
 
 // Countdown timer functions
 function startCountdownTimer() {
-    // Clear existing timer
-    if (countdownTimer) {
-        clearInterval(countdownTimer);
-    }
+    console.log('=== STARTING COUNTDOWN TIMER ===');
+    console.log('Current poll interval:', currentPollInterval, 'minutes');
+    
+    // ALWAYS clear existing timer first to prevent multiple timers
+    stopCountdownTimer();
     
     // Calculate remaining time based on last poll
     calculateAndStartCountdown();
@@ -613,8 +639,10 @@ function calculateAndStartCountdown() {
         }
         
         console.log('Starting countdown with', secondsRemaining, 'seconds remaining');
+        console.log('Poll interval:', currentPollInterval, 'minutes =', currentPollInterval * 60, 'seconds');
         updateCountdownDisplay(secondsRemaining);
         
+        // Set the new timer
         countdownTimer = setInterval(() => {
             secondsRemaining--;
             updateCountdownDisplay(secondsRemaining);
@@ -622,9 +650,39 @@ function calculateAndStartCountdown() {
             if (secondsRemaining <= 0) {
                 // Reset countdown for next interval
                 secondsRemaining = currentPollInterval * 60;
+                console.log('Countdown reset to', secondsRemaining, 'seconds for next interval');
             }
         }, 1000);
+        
+        console.log('Countdown timer started with ID:', countdownTimer);
     });
+}
+
+function stopCountdownTimer() {
+    console.log('=== STOPPING COUNTDOWN TIMER ===');
+    
+    if (countdownTimer) {
+        console.log('Clearing existing timer ID:', countdownTimer);
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    } else {
+        console.log('No active timer to stop');
+    }
+    
+    // Reset display
+    const countdownElement = document.getElementById('nextPollCountdown');
+    const progressBar = document.getElementById('countdownProgress');
+    const countdownValue = countdownElement ? countdownElement.querySelector('.countdown-value') : null;
+    
+    if (countdownValue) {
+        countdownValue.textContent = '--:--';
+        countdownValue.className = 'countdown-value';
+    }
+    
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.className = 'countdown-progress-bar';
+    }
 }
 
 function updateCountdownDisplay(seconds) {
