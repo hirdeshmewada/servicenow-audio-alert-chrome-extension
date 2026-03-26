@@ -551,12 +551,8 @@ async function createNotificationWithDelay(notificationData) {
         isClickable: true, // Allow clicking on notification
         buttons: [
             {
-                title: "🔇 Stop Audio",
-                iconUrl: chrome.runtime.getURL('images/ITSM128.png') // You can add a stop icon
-            },
-            {
-                title: "🔗 Open Queue",
-                iconUrl: chrome.runtime.getURL('images/ITSM128.png') // You can add a link icon
+                title: "❌ Close",
+                iconUrl: chrome.runtime.getURL('images/ITSM128.png') // You can add a close icon
             }
         ]
     };
@@ -580,11 +576,7 @@ async function createNotificationWithDelay(notificationData) {
                 isClickable: true,
                 buttons: [
                     {
-                        title: "🔇 Stop Audio",
-                        iconUrl: chrome.runtime.getURL('images/ITSM128.png')
-                    },
-                    {
-                        title: "🔗 Open Queue",
+                        title: "❌ Close",
                         iconUrl: chrome.runtime.getURL('images/ITSM128.png')
                     }
                 ]
@@ -642,56 +634,36 @@ function showNotification(ticketNumber, ticketDescription, severity, customTitle
     processNotificationQueue();
 }
 
-// Notification button click handler - handles Stop Audio and Open Queue buttons
+// Notification button click handler - handles Close button
 chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
     console.log('Notification button clicked:', notificationId, 'Button index:', buttonIndex);
     
     try {
         if (buttonIndex === 0) {
-            // Stop Audio button clicked
-            console.log('Stop Audio button clicked - stopping audio');
+            // Close button clicked
+            console.log('Close button clicked - stopping audio and dismissing notification');
             await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
-            console.log('Audio stopped via Stop Audio button');
+            console.log('Audio stopped via Close button');
             
             // Clear the notification after stopping audio
             chrome.notifications.clear(notificationId);
             chrome.storage.local.remove(`notification_${notificationId}`);
-            
-        } else if (buttonIndex === 1) {
-            // Open Queue button clicked
-            console.log('Open Queue button clicked');
-            
-            // Get the stored queue URL for this notification
-            const result = await chrome.storage.local.get([`notification_${notificationId}`]);
-            const queueUrl = result[`notification_${notificationId}`];
-            
-            if (queueUrl) {
-                console.log('Opening queue URL:', queueUrl);
-                // Create new tab with the queue URL
-                await chrome.tabs.create({ url: queueUrl });
-                
-                // Clear the notification after opening
-                chrome.notifications.clear(notificationId);
-                chrome.storage.local.remove(`notification_${notificationId}`);
-            } else {
-                console.log('No queue URL found for notification:', notificationId);
-                // Fallback to root URL if available
-                const rootResult = await chrome.storage.sync.get(['rooturl']);
-                if (rootResult.rooturl) {
-                    await chrome.tabs.create({ url: rootResult.rooturl });
-                }
-            }
+            console.log('Notification dismissed via Close button');
         }
     } catch (error) {
         console.error('Error handling notification button click:', error);
     }
 });
 
-// Notification click handler - opens the specific queue URL (for clicking the notification body)
+// Notification click handler - opens the specific queue URL and stops audio
 chrome.notifications.onClicked.addListener(async (notificationId) => {
     console.log('Notification body clicked:', notificationId);
     
     try {
+        // Stop audio when opening queue
+        await chrome.runtime.sendMessage({ type: "STOP_AUDIO" });
+        console.log('Audio stopped when opening queue');
+        
         // Get the stored queue URL for this notification
         const result = await chrome.storage.local.get([`notification_${notificationId}`]);
         const queueUrl = result[`notification_${notificationId}`];
