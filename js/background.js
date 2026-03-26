@@ -155,17 +155,33 @@ async function getQueues(items) {
         return;
     }
 
-    const primaryURL = changeURLforRESTAPI(items.primary);
-    const secondaryURL = changeURLforRESTAPI(items.secondary);
-    state.rootURL = items.rooturl;
+    const urls = [];
     
     // Preserve old list before resetting new list for proper comparison
     const previousList = [...state.newList];
     state.newList = [];
-
-    const urls = [];
-    if (primaryURL) urls.push(primaryURL);
-    if (secondaryURL) urls.push(secondaryURL);
+    
+    // Handle different input modes
+    if (items.inputMode === 'query') {
+        // Query mode: Build URLs from base URL + queries
+        state.rootURL = items.rooturl;
+        
+        if (items.primaryQuery) {
+            const primaryURL = `${items.rooturl}/api/now/table/sn_customerservice_case_list?sysparm_query=${encodeURIComponent(items.primaryQuery)}&sysparm_display_value=true&sysparm_limit=1000`;
+            urls.push(primaryURL);
+        }
+        if (items.secondaryQuery) {
+            const secondaryURL = `${items.rooturl}/api/now/table/sn_customerservice_case_list?sysparm_query=${encodeURIComponent(items.secondaryQuery)}&sysparm_display_value=true&sysparm_limit=1000`;
+            urls.push(secondaryURL);
+        }
+    } else {
+        // URL mode: Use provided URLs directly
+        state.rootURL = items.rooturl;
+        const primaryURL = changeURLforRESTAPI(items.primary);
+        const secondaryURL = changeURLforRESTAPI(items.secondary);
+        if (primaryURL) urls.push(primaryURL);
+        if (secondaryURL) urls.push(secondaryURL);
+    }
 
     if (urls.length === 0) {
         console.log('No URLs configured');
@@ -182,7 +198,7 @@ async function getQueues(items) {
         // Console logging for URL-specific data objects
         console.log(`=== URL-SPECIFIC DATA OBJECTS ===`);
         results.forEach((result, index) => {
-            console.log(`URL ${index + 1} object:`, result);
+            console.log(`URL ${index + 1}:`, result);
         });
         console.log(`================================`);
         
@@ -197,7 +213,15 @@ async function getQueues(items) {
             if (state.currentNumberTotal < totalCount) {
                 console.log('Single queue - New tickets detected, triggering notification');
                 state.ticketNumberGlobal = data.number;
-                const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                
+                // Use appropriate notification text based on input mode
+                let customTitle;
+                if (items.inputMode === 'query') {
+                    customTitle = items.primaryQueryNotificationText || 'New tickets in Queue 1';
+                } else {
+                    customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                }
+                
                 showNotification(data.number, data.description || 'New ticket assigned', data.severity, customTitle);
                 shouldNotify = true;
             } else {
@@ -221,9 +245,17 @@ async function getQueues(items) {
                     // Determine which queue triggered the notification and use its custom text
                     let customTitle;
                     if (latestData === data1) {
-                        customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                        if (items.inputMode === 'query') {
+                            customTitle = items.primaryQueryNotificationText || 'New tickets in Queue 1';
+                        } else {
+                            customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                        }
                     } else {
-                        customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
+                        if (items.inputMode === 'query') {
+                            customTitle = items.secondaryQueryNotificationText || 'New tickets in Queue 2';
+                        } else {
+                            customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
+                        }
                     }
                     
                     showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle);
