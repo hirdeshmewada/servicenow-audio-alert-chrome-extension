@@ -578,21 +578,16 @@ function validateURL(url) {
     try {
         const urlObj = new URL(url);
         return urlObj.protocol === 'https:' && urlObj.hostname.includes('service-now.com');
-    } catch {
-        return false;
-    }
-}
 
 function changeURLforRESTAPI(url) {
     if (!url || url === "") return undefined;
 
     try {
-        console.log('Processing ServiceNow URL:', url);
+        console.log('=== ENHANCED SERVICENOW URL PROCESSING ===');
+        console.log('Input URL:', url);
         
-        // Handle new ServiceNow UI URLs with multiple encoding levels
+        // Handle new ServiceNow UI URLs with multiple encoding
         let processedUrl = url;
-        
-        // Check if it's a new UI URL with /now/nav/ui/classic/params/target/
         if (url.includes('/now/nav/ui/classic/params/target/')) {
             console.log('Detected new ServiceNow UI URL, processing...');
             
@@ -604,7 +599,7 @@ function changeURLforRESTAPI(url) {
                 let decodedUrl = progressiveDecode(targetUrl);
                 console.log('Progressively decoded URL:', decodedUrl);
                 
-                // Rebuild the full URL
+                // Rebuild full URL
                 const urlMatch = url.match(/(https:\/\/[^\/]+)/);
                 if (urlMatch) {
                     processedUrl = urlMatch[1] + '/' + decodedUrl;
@@ -624,11 +619,27 @@ function changeURLforRESTAPI(url) {
         const serviceNowQuery = extractServiceNowQuery(processedUrl);
         console.log('Extracted ServiceNow query:', serviceNowQuery);
         
-        // Build REST API URL with preserved parameters
+        // Parse and analyze the query
+        const parsedQuery = parseEncodedQuery(serviceNowQuery);
+        console.log('Parsed conditions:', parsedQuery);
+        
+        // Build human-readable summary for debugging
+        const summary = buildQuerySummary(parsedQuery);
+        console.log('Query Analysis:');
+        console.log(`- Total conditions: ${summary.totalConditions}`);
+        console.log(`- Active tickets: ${summary.activeConditions}`);
+        console.log(`- Resolved tickets: ${summary.resolvedConditions}`);
+        console.log(`- Priority level: ${summary.priority || 'Not specified'}`);
+        console.log(`- States: ${summary.states.join(', ')}`);
+        console.log(`- Fields used: ${summary.fields.join(', ')}`);
+        
+        // Build REST API URL with proper encoding
         let restURL = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
         
-        // Add the preserved ServiceNow query
+        // Add ServiceNow query with proper encoding to preserve & characters
         if (serviceNowQuery) {
+            // Use encodeURIComponent to properly encode the entire query
+            // This preserves internal & characters while making it URL-safe
             restURL += '?sysparm_query=' + encodeURIComponent(serviceNowQuery);
         }
         
@@ -637,6 +648,7 @@ function changeURLforRESTAPI(url) {
         restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
         
         console.log('Final REST API URL:', restURL);
+        console.log('Query length:', serviceNowQuery.length, 'characters');
         return restURL;
     } catch (error) {
         console.error('Error processing URL:', error);
@@ -644,36 +656,12 @@ function changeURLforRESTAPI(url) {
     }
 }
 
-// Progressive decoding for multiple encoding levels
-function progressiveDecode(encodedString) {
-    let decoded = encodedString;
-    let previousDecoded;
-    let decodeCount = 0;
-    const maxDecodes = 5; // Prevent infinite loops
-    
-    do {
-        previousDecoded = decoded;
-        try {
-            decoded = decodeURIComponent(decoded);
-            decodeCount++;
-            console.log(`Decode iteration ${decodeCount}:`, decoded);
-        } catch (e) {
-            console.log('Decoding failed at iteration', decodeCount + 1, ':', e.message);
-            break;
-        }
-    } while (decoded !== previousDecoded && decodeCount < maxDecodes);
-    
-    console.log(`Total decode iterations: ${decodeCount}`);
-    return decoded;
-}
-
-// Safe ServiceNow query extraction
 function extractServiceNowQuery(url) {
     try {
         // Handle both encoded and non-encoded URLs
         let workingUrl = url;
         
-        // Decode the URL first if it's encoded
+        // Decode URL first if it's encoded
         if (url.includes('%')) {
             workingUrl = progressiveDecode(url);
         }
@@ -682,6 +670,7 @@ function extractServiceNowQuery(url) {
         const patterns = [
             /sysparm_query=([^&]*)/,
             /sysparm_query%3D([^&]*)/,
+            /sysparm_query%253D([^&]*)/,
             /[?&]sysparm_query=([^&]*)/
         ];
         
@@ -705,42 +694,124 @@ function extractServiceNowQuery(url) {
     }
 }
 
-// Helper function to remove parameters from query string without URL parsing
-function removeParamFromString(paramName, queryString) {
-    if (!queryString) return queryString;
+// Parse encoded query into individual conditions
+function parseEncodedQuery(query) {
+    const conditions = [];
     
-    // Remove parameter with its value
-    const regex = new RegExp(`&?${paramName}=[^&]*`, 'g');
-    let result = queryString.replace(regex, '');
+    let currentCondition = {};
     
-    // Remove leading ? if it's the only parameter
-    if (result.startsWith('?') && result.indexOf('&') === -1) {
-        result = result.substring(1);
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i].trim();
+        
+        if (part === '') continue;
+        
+        // Handle operator prefixes
+        if (part.startsWith('OR') || part.startsWith('NQ')) {
+            // New query block
+            if (Object.keys(currentCondition).length > 0) {
+                conditions.push({...currentCondition});
+                currentCondition = {};
+            }
+            continue;
+        }
+        
+        // Parse field=value pairs
+        const fieldMatch = part.match(/^([^=!=!]+)(=|!=|!|LIKE|STARTSWITH|ENDSWITH)(.+)$/);
+        if (fieldMatch) {
+            const [, field, operator, value] = fieldMatch;
+            
+            currentCondition[field] = {
+                operator: operator,
+                value: decodeValue(value),
+                displayValue: getDisplayValue(field, value)
+            };
+        }
     }
     
-    // Replace leading & if present
-    if (result.startsWith('&')) {
-        result = result.substring(1);
+    // Add last condition if exists
+    if (Object.keys(currentCondition).length > 0) {
+        conditions.push(currentCondition);
     }
     
-    return result;
+    return conditions;
 }
 
-function removeParam(key, sourceURL) {
+// Decode URL-encoded values
+function decodeValue(value) {
     try {
-        const url = new URL(sourceURL);
-        url.searchParams.delete(key);
-        return url.toString();
-    } catch {
-        // Fallback to string manipulation if URL parsing fails
-        const rtn = sourceURL.split("?")[0];
-        const queryString = sourceURL.includes("?") ? sourceURL.split("?")[1] : "";
-        
-        if (!queryString) return rtn;
-        
-        const params = queryString.split("&").filter(param => !param.startsWith(key + "="));
-        return params.length > 0 ? rtn + "?" + params.join("&") : rtn;
+        return decodeURIComponent(value);
+    } catch (e) {
+        return value; // Return original if decode fails
     }
+}
+
+// Get display value for choice fields
+function getDisplayValue(field, value) {
+    // Handle choice fields (state, priority, etc.)
+    const choiceMappings = {
+        // Incident states
+        '1': 'New',
+        '2': 'In Progress', 
+        '3': 'On Hold',
+        '6': 'Resolved',
+        '7': 'Closed',
+        '8': 'Canceled',
+        
+        // Priority levels
+        '1': 'Critical',
+        '2': 'High',
+        '3': 'Medium',
+        '4': 'Low',
+        '5': 'Planning'
+    };
+    
+    if (choiceMappings[value]) {
+        return choiceMappings[value];
+    }
+    
+    // Handle sys_id references
+    if (field.includes('_id') && value.length === 32) {
+        return `[Sys ID: ${value}]`;
+    }
+    
+    return value;
+}
+
+// Build human-readable summary
+function buildQuerySummary(conditions) {
+    const summary = {
+        totalConditions: conditions.length,
+        activeConditions: 0,
+        resolvedConditions: 0,
+        priority: null,
+        states: [],
+        fields: []
+    };
+    
+    conditions.forEach(condition => {
+        Object.entries(condition).forEach(([field, config]) => {
+            summary.fields.push(field);
+            
+            // Count active vs resolved
+            if (field === 'state' && config.displayValue === 'Resolved') {
+                summary.resolvedConditions++;
+            } else if (field === 'state' && config.displayValue !== 'Resolved') {
+                summary.activeConditions++;
+            }
+            
+            // Extract priority
+            if (field === 'priority') {
+                summary.priority = config.displayValue;
+            }
+            
+            // Extract states
+            if (field === 'state') {
+                summary.states.push(config.displayValue);
+            }
+        });
+    });
+    
+    return summary;
 }
 
 // Send ticket updates to options page
