@@ -25,6 +25,16 @@ chrome.runtime.onInstalled.addListener(async (details) => {
             console.log('Could not open options page:', e);
         }
     }
+    
+    // Initialize state on install/update
+    console.log('=== INITIALIZING STATE ===');
+    state.oldList = [];
+    state.newList = [];
+    state.currentNumberTickets = 0;
+    state.currentNumberTask = 0;
+    state.currentNumberTotal = 0;
+    state.newStamp = 0;
+    
     await getSavedData();
 });
 
@@ -257,17 +267,36 @@ async function getQueues(items) {
                 await audioNotification();
             } else if (items.alarmCondition === "alarmOnNewEntry") {
                 // Check for new tickets by comparing previous and new lists
-                const difference = state.newList.filter(x => !previousList.includes(x));
-                console.log('New tickets detected:', difference);
-                console.log('Previous list length:', previousList.length, 'New list length:', state.newList.length);
+                console.log('=== NEW TICKET DETECTION LOGIC ===');
+                console.log('Previous list:', previousList);
+                console.log('New list:', state.newList);
+                console.log('Previous list length:', previousList.length);
+                console.log('New list length:', state.newList.length);
                 
-                if (difference.length > 0) {
-                    console.log('Triggering audio - new tickets condition met');
+                // Find tickets that are in new list but not in previous list
+                const difference = state.newList.filter(x => !previousList.includes(x));
+                console.log('New tickets detected (difference):', difference);
+                
+                // Only trigger audio if:
+                // 1. This is not the first run (previousList is not empty)
+                // 2. There are actual new tickets (difference > 0)
+                if (previousList.length > 0 && difference.length > 0) {
+                    console.log('✅ Triggering audio - new tickets condition met');
                     console.log('New tickets:', difference);
                     await audioNotification();
                 } else {
-                    console.log('No new tickets - audio not triggered');
-                    console.log('All new tickets were already in previous list');
+                    console.log('❌ No new tickets - audio not triggered');
+                    if (previousList.length === 0 && state.newList.length > 0) {
+                        console.log('🔄 First run detected - treating all tickets as existing, not new');
+                    } else if (previousList.length === state.newList.length) {
+                        console.log('📊 Same number of tickets - checking if they are the same tickets');
+                        const sameTickets = state.newList.every(x => previousList.includes(x));
+                        if (sameTickets) {
+                            console.log('✅ All tickets are the same - no new tickets');
+                        } else {
+                            console.log('🔄 Different tickets detected but same count - this should not happen');
+                        }
+                    }
                 }
             } else {
                 console.log('No audio trigger - conditions not met');
