@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ServiceNow URL Processing Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .url-input {
+            width: 100%;
+            height: 60px;
+            margin: 10px 0;
+        }
+        .result {
+            background: #f5f5f5;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>ServiceNow URL Processing Test</h1>
+    
+    <div class="test-section">
+        <h3>Test URL Processing</h3>
+        <textarea id="urlInput" class="url-input" placeholder="Paste your ServiceNow URL here...">https://tatain.service-now.com/now/nav/ui/classic/params/target/sn_customerservice_case_list.do%3Fsysparm_query%3DstateIN6%255EimpactIN4%252C5%252C6%255Eu_acknowledgement%253Dtrue%255Eu_status_reasonNOT%2520IN20%252C68%255EORu_status_reason%253D%255Eactive%253Dtrue%255Eu_first_assignment_group%253D6b28bf5cdbc4d1946f316a9ed3961932%255EORassignment_group%253D6b28bf5cdbc4d1946f316a9ed3961932%255Eproduct.type%253DIP%255EORproduct.type%253DSDWAN%255Eu_status_reason!%253D100%255EORu_status_reason%253D%255Eu_status_reason!%253D20%255EORu_status_reason%253D%255Eu_rfo_ready%253Dfalse%255Eassignment_groupNOT%2520LIKEIPSOC_%2520Eco%2526IZOInternet%255Eshort_descriptionNOT%2520LIKEBB%255EORshort_descriptionISEMPTY%255Eassignment_group!%253D0eb19a1047acca10b97e4497436d4374%255EORassignment_group%253D</textarea>
+        <button onclick="testURLProcessing()">Test URL Processing</button>
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Quick Test URLs</h3>
+        <button onclick="testOldURL()">Test Old Format</button>
+        <button onclick="testNewURL()">Test New Format</button>
+        <button onclick="testSimpleURL()">Test Simple URL</button>
+    </div>
+
+    <script>
+        // Copy the key functions from background.js for testing
+        function progressiveDecode(encodedString) {
+            let decoded = encodedString;
+            let previousDecoded;
+            let decodeCount = 0;
+            const maxDecodes = 5;
+            
+            do {
+                previousDecoded = decoded;
+                try {
+                    decoded = decodeURIComponent(decoded);
+                    decodeCount++;
+                } catch (e) {
+                    console.log('Decoding failed at iteration', decodeCount + 1, ':', e.message);
+                    break;
+                }
+            } while (decoded !== previousDecoded && decodeCount < maxDecodes);
+            
+            return decoded;
+        }
+
+        function extractServiceNowQuery(url) {
+            try {
+                let workingUrl = url;
+                if (url.includes('%')) {
+                    workingUrl = progressiveDecode(url);
+                }
+                
+                const patterns = [
+                    /sysparm_query=([^&]*)/,
+                    /sysparm_query%3D([^&]*)/,
+                    /sysparm_query%253D([^&]*)/,
+                    /[?&]sysparm_query=([^&]*)/
+                ];
+                
+                for (const pattern of patterns) {
+                    const match = workingUrl.match(pattern);
+                    if (match) {
+                        let query = match[1];
+                        if (query.includes('%')) {
+                            query = progressiveDecode(query);
+                        }
+                        return query;
+                    }
+                }
+                
+                return '';
+            } catch (error) {
+                console.error('Error extracting ServiceNow query:', error);
+                return '';
+            }
+        }
+
+        function parseEncodedQuery(query) {
+            const conditions = [];
+            const parts = query.split('^');
+            let currentCondition = {};
+            
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i].trim();
+                
+                if (part === '') continue;
+                
+                if (part.startsWith('OR') || part.startsWith('NQ')) {
+                    if (Object.keys(currentCondition).length > 0) {
+                        conditions.push({...currentCondition});
+                        currentCondition = {};
+                    }
+                    continue;
+                }
+                
+                const fieldMatch = part.match(/^([^=!=!]+)(=|!=|!|LIKE|STARTSWITH|ENDSWITH)(.+)$/);
+                if (fieldMatch) {
+                    const [, field, operator, value] = fieldMatch;
+                    
+                    currentCondition[field] = {
+                        operator: operator,
+                        value: decodeURIComponent(value),
+                        displayValue: value
+                    };
+                }
+            }
+            
+            if (Object.keys(currentCondition).length > 0) {
+                conditions.push(currentCondition);
+            }
+            
+            return conditions;
+        }
+
+        function changeURLforRESTAPI(url) {
+            if (!url || url === "") return undefined;
+
+            try {
+                console.log('=== ENHANCED SERVICENOW URL PROCESSING ===');
+                console.log('Input URL:', url);
+                
+                let processedUrl = url;
+                if (url.includes('/now/nav/ui/classic/params/target/')) {
+                    console.log('Detected new ServiceNow UI URL, processing...');
+                    
+                    const targetMatch = url.match(/params\/target\/(.+)$/);
+                    if (targetMatch) {
+                        let targetUrl = targetMatch[1];
+                        let decodedUrl = progressiveDecode(targetUrl);
+                        console.log('Progressively decoded URL:', decodedUrl);
+                        
+                        const urlMatch = url.match(/(https:\/\/[^\/]+)/);
+                        if (urlMatch) {
+                            processedUrl = urlMatch[1] + '/' + decodedUrl;
+                            console.log('Rebuilt URL:', processedUrl);
+                        }
+                    }
+                }
+                
+                const urlObj = new URL(processedUrl);
+                if (!urlObj.hostname.includes('service-now.com')) {
+                    console.warn('URL does not appear to be a ServiceNow instance:', processedUrl);
+                    return undefined;
+                }
+
+                const serviceNowQuery = extractServiceNowQuery(processedUrl);
+                console.log('Extracted ServiceNow query:', serviceNowQuery);
+                
+                const parsedQuery = parseEncodedQuery(serviceNowQuery);
+                console.log('Parsed conditions:', parsedQuery);
+                
+                let restURL = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
+                
+                if (serviceNowQuery) {
+                    restURL += '?sysparm_query=' + encodeURIComponent(serviceNowQuery);
+                }
+                
+                const separator = serviceNowQuery ? '&' : '?';
+                restURL += `${separator}JSONv2&sysparm_fields=number,severity,short_description,priority,sys_id,sys_updated_on,account,assigned_to,state,u_next_step_date_and_time,impact,category,opened_by,assignment_group,u_first_assignment_group,u_service_downtime_started,u_service_downtime_end,u_fault_cause,resolved_by,resolved_at,u_resolved,u_resolved_by,sys_mod_count`;
+                
+                console.log('Final REST API URL:', restURL);
+                return restURL;
+            } catch (error) {
+                console.error('Error processing URL:', error);
+                return undefined;
+            }
+        }
+
+        function testURLProcessing() {
+            const urlInput = document.getElementById('urlInput').value;
+            const resultDiv = document.getElementById('result');
+            
+            console.log('Testing URL:', urlInput);
+            
+            try {
+                const result = changeURLforRESTAPI(urlInput);
+                
+                if (result) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.textContent = `✅ SUCCESS!\n\nOriginal URL: ${urlInput}\n\nFinal REST API URL: ${result}\n\nURL Length: ${result.length} characters`;
+                } else {
+                    resultDiv.style.display = 'block';
+                    resultDiv.textContent = `❌ FAILED!\n\nCould not process URL: ${urlInput}\n\nCheck console for details.`;
+                }
+            } catch (error) {
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = `❌ ERROR!\n\n${error.message}\n\nURL: ${urlInput}`;
+            }
+        }
+
+        function testOldURL() {
+            document.getElementById('urlInput').value = 'https://tatain.service-now.com/sn_customerservice_case_list.do?sysparm_query=stateIN6^impactIN4,5,6^parentISEMPTY^u_acknowledgement=true';
+            testURLProcessing();
+        }
+
+        function testNewURL() {
+            document.getElementById('urlInput').value = 'https://tatain.service-now.com/now/nav/ui/classic/params/target/sn_customerservice_case_list.do%3Fsysparm_query%3DstateIN6%255EimpactIN4%252C5%252C6%255EparentISEMPTY%255Eu_acknowledgement%253Dtrue';
+            testURLProcessing();
+        }
+
+        function testSimpleURL() {
+            document.getElementById('urlInput').value = 'https://tatain.service-now.com/sn_customerservice_case_list.do?sysparm_query=active=true';
+            testURLProcessing();
+        }
+    </script>
+</body>
+</html>
