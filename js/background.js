@@ -230,90 +230,95 @@ async function handleNotifications(items, totalCount, results, latestData, previ
     console.log('Audio disabled:', items.disableAlarm === "on");
     console.log('Total count:', totalCount);
     
-    if (items.disableAlarm !== "on") {
-        if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
-            console.log('✅ Triggering - Count > 0 condition met');
+    // Create notifications regardless of audio setting
+    if (items.alarmCondition === "nonZeroCount" && totalCount > 0) {
+        console.log('✅ Triggering - Count > 0 condition met');
+        
+        // Play audio only if not disabled
+        if (items.disableAlarm !== "on") {
             await audioNotification();
-            
-            // Also create notification for non-zero count
-            if (urls === 1) {
-                // Single queue - one notification
-                const customTitle = items.primaryNotificationText || 'Tickets Available';
-                showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, items.primary);
-            } else {
-                // Dual queue - separate notifications for each queue
-                if (results[0].quantity > 0) {
-                    const customTitle = items.primaryNotificationText || 'Queue 1 - Tickets Available';
-                    showNotification(results[0].number, results[0].description || 'Queue 1 tickets available', results[0].severity, customTitle, items.primary);
-                }
-                
-                if (results[1].quantity > 0) {
-                    const customTitle = items.secondaryNotificationText || 'Queue 2 - Tickets Available';
-                    showNotification(results[1].number, results[1].description || 'Queue 2 tickets available', results[1].severity, customTitle, items.secondary);
-                }
+        }
+        
+        // Always create notifications for non-zero count
+        if (urls === 1) {
+            // Single queue - one notification
+            const customTitle = items.primaryNotificationText || 'Tickets Available';
+            showNotification(latestData.number, latestData.description || 'Tickets available', latestData.severity, customTitle, items.primary);
+        } else {
+            // Dual queue - separate notifications for each queue
+            if (results[0].quantity > 0) {
+                const customTitle = items.primaryNotificationText || 'Queue 1 - Tickets Available';
+                showNotification(results[0].number, results[0].description || 'Queue 1 tickets available', results[0].severity, customTitle, items.primary);
             }
             
-        } else if (items.alarmCondition === "alarmOnNewEntry") {
-            // Check for new tickets by comparing previous and new lists
-            console.log('=== NEW TICKET DETECTION LOGIC ===');
-            console.log('Previous list:', previousList);
-            console.log('New list:', lists.newList);
-            console.log('Previous list length:', previousList.length);
-            console.log('New list length:', lists.newList.length);
+            if (results[1].quantity > 0) {
+                const customTitle = items.secondaryNotificationText || 'Queue 2 - Tickets Available';
+                showNotification(results[1].number, results[1].description || 'Queue 2 tickets available', results[1].severity, customTitle, items.secondary);
+            }
+        }
+        
+    } else if (items.alarmCondition === "alarmOnNewEntry") {
+        // Check for new tickets by comparing previous and new lists
+        console.log('=== NEW TICKET DETECTION LOGIC ===');
+        console.log('Previous list:', previousList);
+        console.log('New list:', lists.newList);
+        console.log('Previous list length:', previousList.length);
+        console.log('New list length:', lists.newList.length);
+        
+        // Find tickets that are in new list but not in previous list
+        const difference = lists.newList.filter(x => !previousList.includes(x));
+        console.log('New tickets detected (difference):', difference);
+        
+        // Only trigger if:
+        // 1. This is not the first run (previousList is not empty)
+        // 2. There are actual new tickets (difference > 0)
+        if (previousList.length > 0 && difference.length > 0) {
+            console.log('✅ Triggering audio - new tickets condition met');
+            console.log('New tickets:', difference);
             
-            // Find tickets that are in new list but not in previous list
-            const difference = lists.newList.filter(x => !previousList.includes(x));
-            console.log('New tickets detected (difference):', difference);
-            
-            // Only trigger if:
-            // 1. This is not the first run (previousList is not empty)
-            // 2. There are actual new tickets (difference > 0)
-            if (previousList.length > 0 && difference.length > 0) {
-                console.log('✅ Triggering audio - new tickets condition met');
-                console.log('New tickets:', difference);
+            // Play audio only if not disabled
+            if (items.disableAlarm !== "on") {
                 await audioNotification();
-                
-                // Create notification for new tickets
-                if (urls === 1) {
-                    // Single queue - one notification
-                    const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
-                    showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle, items.primary);
-                } else {
-                    // Dual queue - check which queue has new tickets and create separate notifications
-                    // For dual queues, we need to track which tickets come from which queue
-                    // Since we only have ticket numbers, we'll use the latestData to determine which queue triggered
-                    
-                    // Check if Queue 1 has new tickets
-                    if (results[0].quantity > 0 && difference.length > 0) {
-                        const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
-                        showNotification(results[0].number, results[0].description || 'New tickets in Queue 1', results[0].severity, customTitle, items.primary);
-                    }
-                    
-                    // Check if Queue 2 has new tickets
-                    if (results[1].quantity > 0 && difference.length > 0) {
-                        const customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
-                        showNotification(results[1].number, results[1].description || 'New tickets in Queue 2', results[1].severity, customTitle, items.secondary);
-                    }
-                }
+            }
+            
+            // Create notification for new tickets
+            if (urls === 1) {
+                // Single queue - one notification
+                const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                showNotification(latestData.number, latestData.description || 'New ticket assigned', latestData.severity, customTitle, items.primary);
             } else {
-                console.log('❌ No new tickets - audio not triggered');
-                if (previousList.length === 0 && lists.newList.length > 0) {
-                    console.log('🔄 First run detected - treating all tickets as existing, not new');
-                } else if (previousList.length === lists.newList.length) {
-                    console.log('📊 Same number of tickets - checking if they are the same tickets');
-                    const sameTickets = lists.newList.every(x => previousList.includes(x));
-                    if (sameTickets) {
-                        console.log('✅ All tickets are the same - no new tickets');
-                    } else {
-                        console.log('🔄 Different tickets detected but same count - this should not happen');
-                    }
+                // Dual queue - check which queue has new tickets and create separate notifications
+                // For dual queues, we need to track which tickets come from which queue
+                // Since we only have ticket numbers, we'll use the latestData to determine which queue triggered
+                
+                // Check if Queue 1 has new tickets
+                if (results[0].quantity > 0 && difference.length > 0) {
+                    const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
+                    showNotification(results[0].number, results[0].description || 'New tickets in Queue 1', results[0].severity, customTitle, items.primary);
+                }
+                
+                // Check if Queue 2 has new tickets
+                if (results[1].quantity > 0 && difference.length > 0) {
+                    const customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
+                    showNotification(results[1].number, results[1].description || 'New tickets in Queue 2', results[1].severity, customTitle, items.secondary);
                 }
             }
         } else {
-            console.log('❌ No notification trigger - conditions not met');
+            console.log('❌ No new tickets - audio not triggered');
+            if (previousList.length === 0 && lists.newList.length > 0) {
+                console.log('🔄 First run detected - treating all tickets as existing, not new');
+            } else if (previousList.length === lists.newList.length) {
+                console.log('📊 Same number of tickets - checking if they are the same tickets');
+                const sameTickets = lists.newList.every(x => previousList.includes(x));
+                if (sameTickets) {
+                    console.log('✅ All tickets are the same - no new tickets');
+                } else {
+                    console.log('🔄 Different tickets detected but same count - this should not happen');
+                }
+            }
         }
     } else {
-        console.log('❌ Audio disabled - no notifications');
+        console.log('❌ No notification trigger - conditions not met');
     }
 }
 
