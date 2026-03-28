@@ -270,11 +270,11 @@ async function handleNotifications(items, totalCount, results, latestData, previ
         console.log('New tickets detected (difference):', difference);
         
         // Only trigger if:
-        // 1. This is not the first run (previousList is not empty)
-        // 2. There are actual new tickets (difference > 0)
-        if (previousList.length > 0 && difference.length > 0) {
+        // 1. First run with tickets (previousList is empty but newList has tickets)
+        // 2. Not first run but has new tickets (previousList has tickets AND difference > 0)
+        if ((previousList.length === 0 && lists.newList.length > 0) || (previousList.length > 0 && difference.length > 0)) {
             console.log('✅ Triggering audio - new tickets condition met');
-            console.log('New tickets:', difference);
+            console.log('New tickets:', previousList.length === 0 ? lists.newList : difference);
             
             // Play audio only if not disabled
             if (items.disableAlarm !== "on") {
@@ -292,21 +292,21 @@ async function handleNotifications(items, totalCount, results, latestData, previ
                 // Since we only have ticket numbers, we'll use the latestData to determine which queue triggered
                 
                 // Check if Queue 1 has new tickets
-                if (results[0].quantity > 0 && difference.length > 0) {
+                if (results[0].quantity > 0) {
                     const customTitle = items.primaryNotificationText || 'New tickets in Queue 1';
                     showNotification(results[0].number, results[0].description || 'New tickets in Queue 1', results[0].severity, customTitle, items.primary);
                 }
                 
                 // Check if Queue 2 has new tickets
-                if (results[1].quantity > 0 && difference.length > 0) {
+                if (results[1].quantity > 0) {
                     const customTitle = items.secondaryNotificationText || 'New tickets in Queue 2';
                     showNotification(results[1].number, results[1].description || 'New tickets in Queue 2', results[1].severity, customTitle, items.secondary);
                 }
             }
         } else {
             console.log('❌ No new tickets - audio not triggered');
-            if (previousList.length === 0 && lists.newList.length > 0) {
-                console.log('🔄 First run detected - treating all tickets as existing, not new');
+            if (previousList.length === 0 && lists.newList.length === 0) {
+                console.log('🔄 First run detected - no tickets found');
             } else if (previousList.length === lists.newList.length) {
                 console.log('📊 Same number of tickets - checking if they are the same tickets');
                 const sameTickets = lists.newList.every(x => previousList.includes(x));

@@ -56,12 +56,11 @@ async function createNotificationWithDelay(notificationData) {
         iconUrl: iconUrl,
         title: notificationTitle,
         message: ticketDescription,
-        requireInteraction: false, // Don't require interaction - will auto-dismiss
+        requireInteraction: true, // Require interaction to ensure Windows shows notifications
         isClickable: true, // Allow clicking on notification
         buttons: [
             {
-                title: "❌ Close",
-                iconUrl: chrome.runtime.getURL('images/ITSM128.png') // You can add a close icon
+                title: "❌ Close"
             }
         ]
     };
@@ -116,6 +115,7 @@ async function createNotificationWithDelay(notificationData) {
     });
     
     // Auto-clear popup after 8 seconds but keep in notification center
+    // This ensures Windows notifications appear while still auto-dismissing
     setTimeout(function(){
         chrome.notifications.clear(notificationId, function(wasCleared) {
             if (wasCleared) {
