@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SNOW Audio Alerts - Control Center</title>
+    <link href="css/bootstrap.min.css" rel="stylesheet" media="screen" />
+    <link href="css/home.css" rel="stylesheet" media="screen" />
+</head>
+<body>
+    <div class="home-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <div class="logo-section">
+                        <img src="images/ITSM50.png" alt="ServiceNow Audio Alerts" class="logo">
+                        <div class="title-section">
+                            <h1>SNOW Audio Alerts</h1>
+                            <p>ServiceNow Queue Monitoring System</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="status-indicator">
+                        <span class="status-dot" id="statusDot"></span>
+                        <span class="status-text" id="statusText">Initializing...</span>
+                    </div>
+                    <button class="btn btn-primary" id="startStopBtn">
+                        <span class="btn-icon" id="startStopIcon">▶️</span>
+                        <span class="btn-text" id="startStopText">Start</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="main-layout">
+            <!-- Vertical Navigation -->
+            <nav class="vertical-nav">
+                <div class="nav-header">
+                    <h3>Navigation</h3>
+                </div>
+                <ul class="nav-menu">
+                    <li class="nav-item active" data-page="dashboard">
+                        <a href="#dashboard">
+                            <i class="nav-icon">📊</i>
+                            <span class="nav-text">Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-page="configuration">
+                        <a href="#configuration">
+                            <i class="nav-icon">⚙️</i>
+                            <span class="nav-text">Configuration</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-page="sound">
+                        <a href="#sound">
+                            <i class="nav-icon">🔊</i>
+                            <span class="nav-text">Sound</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-page="monitoring">
+                        <a href="#monitoring">
+                            <i class="nav-icon">👁️</i>
+                            <span class="nav-text">Monitoring</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-page="about">
+                        <a href="#about">
+                            <i class="nav-icon">ℹ️</i>
+                            <span class="nav-text">About</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <!-- Content Area -->
+            <main class="content-area">
+                <!-- Dashboard Page -->
+                <div id="dashboard" class="page-content active">
+                    <div class="page-header">
+                        <h2>Dashboard</h2>
+                        <p>Real-time monitoring overview and statistics</p>
+                    </div>
+
+                    <!-- Status Cards -->
+                    <div class="dashboard-grid">
+                        <div class="status-card">
+                            <div class="card-header">
+                                <h3>System Status</h3>
+                                <span class="status-badge" id="systemStatus">Active</span>
+                            </div>
+                            <div class="card-content">
+                                <div class="status-info">
+                                    <div class="info-row">
+                                        <span class="label">Monitoring:</span>
+                                        <span class="value" id="monitoringStatus">Active</span>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Last Poll:</span>
+                                        <span class="value" id="lastPollTime">Never</span>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Next Poll:</span>
+                                        <span class="value" id="nextPollTime">--:--</span>
+                                    </div>
+                                </div>
+                                <div class="countdown-container">
+                                    <div class="countdown-label">Next Poll In</div>
+                                    <div class="countdown-timer">
+                                        <span class="countdown-value" id="countdownValue">--:--</span>
+                                        <div class="countdown-progress">
+                                            <div class="countdown-progress-bar" id="countdownProgress"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="queue-card">
+                            <div class="card-header">
+                                <h3>Queue Analytics</h3>
+                                <button class="btn btn-sm btn-secondary" id="refreshQueues">🔄 Refresh</button>
+                            </div>
+                            <div class="card-content">
+                                <div class="queue-grid">
+                                    <div class="queue-item">
+                                        <div class="queue-label">Queue A</div>
+                                        <div class="queue-count" id="queueACount">0</div>
+                                        <div class="queue-trend" id="queueATrend">→</div>
+                                    </div>
+                                    <div class="queue-item">
+                                        <div class="queue-label">Queue B</div>
+                                        <div class="queue-count" id="queueBCount">0</div>
+                                        <div class="queue-trend" id="queueBTrend">→</div>
+                                    </div>
+                                    <div class="queue-item total">
+                                        <div class="queue-label">Total</div>
+                                        <div class="queue-count" id="totalCount">0</div>
+                                        <div class="queue-trend" id="totalTrend">→</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="recent-tickets-card">
+                            <div class="card-header">
+                                <h3>Recent Tickets</h3>
+                                <span class="ticket-count" id="recentTicketCount">0</span>
+                            </div>
+                            <div class="card-content">
+                                <div class="ticket-list" id="recentTicketsList">
+                                    <div class="empty-state">No recent tickets</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration Page -->
+                <div id="configuration" class="page-content">
+                    <div class="page-header">
+                        <h2>Configuration</h2>
+                        <p>ServiceNow instance and queue settings</p>
+                    </div>
+
+                    <div class="config-section">
+                        <div class="section-title">ServiceNow Connection</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="form-label" for="rootUrl">Base URL</label>
+                                <input id="rootUrl" type="text" class="form-control" placeholder="https://instance.service-now.com" />
+                                <div class="help-text">Do not include trailing /</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="primaryQueue">Notify URL 1</label>
+                                <input id="primaryQueue" type="text" class="form-control" placeholder="Queue 1 URL" />
+                                <div class="help-text">Paste a filtered list/report URL from ServiceNow</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="primaryNotificationText">Queue 1 Notification Text</label>
+                                <input id="primaryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 1" />
+                                <div class="help-text">Custom text for notifications from Queue 1</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="secondaryQueue">Notify URL 2 (Optional)</label>
+                                <input id="secondaryQueue" type="text" class="form-control" placeholder="Queue 2 URL" />
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="secondaryNotificationText">Queue 2 Notification Text</label>
+                                <input id="secondaryNotificationText" type="text" class="form-control" placeholder="New tickets in Queue 2" />
+                                <div class="help-text">Custom text for notifications from Queue 2</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="badgeDisplay">Badge Display</label>
+                                <select id="badgeDisplay" class="form-control">
+                                    <option value="false">Total (A + B)</option>
+                                    <option value="true">Split (A | B)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button class="btn btn-primary" id="saveConfig">💾 Save Configuration</button>
+                            <button class="btn btn-secondary" id="testConfig">🧪 Test Connection</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sound Page -->
+                <div id="sound" class="page-content">
+                    <div class="page-header">
+                        <h2>Sound Settings</h2>
+                        <p>Configure audio notifications and custom sounds</p>
+                    </div>
+
+                    <div class="sound-sections">
+                        <!-- Audio Selection -->
+                        <div class="sound-section">
+                            <div class="section-title">Audio Selection</div>
+                            <div class="form-group">
+                                <label class="form-label" for="audioSource">Audio Source</label>
+                                <select id="audioSource" class="form-control">
+                                    <option value="default">Default Alarm Sound</option>
+                                    <option value="custom">Custom Audio File</option>
+                                </select>
+                            </div>
+
+                            <!-- Default Audio Preview -->
+                            <div id="defaultAudioSection" class="audio-preview-section">
+                                <div class="audio-preview">
+                                    <h4>Default Alarm</h4>
+                                    <p>Standard ServiceNow alert sound</p>
+                                    <button id="testDefaultAudio" class="btn btn-secondary">
+                                        🔊 Test Default
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Custom Audio Upload -->
+                            <div id="customAudioSection" class="audio-upload-section" style="display: none;">
+                                <div class="upload-area" id="uploadArea">
+                                    <div class="upload-content">
+                                        <div class="upload-icon">📁</div>
+                                        <h4>Upload Custom Audio</h4>
+                                        <p>Drag & drop MP3 or WAV files here (max 5MB)</p>
+                                        <input type="file" id="audioFileInput" accept="audio/mp3,audio/wav,audio/mpeg" style="display: none;">
+                                        <button id="selectFileBtn" class="btn btn-secondary">
+                                            📂 Select File
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Custom Audio List -->
+                                <div class="custom-audio-list">
+                                    <h4>Uploaded Audio Files</h4>
+                                    <div id="audioFilesContainer" class="audio-files-grid">
+                                        <div class="empty-state">No custom audio files uploaded yet</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Playback Settings -->
+                        <div class="sound-section">
+                            <div class="section-title">Playback Settings</div>
+                            <div class="playback-controls">
+                                <div class="form-group">
+                                    <label class="form-label" for="playbackDuration">Playback Duration (seconds)</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="playbackDuration" min="1" max="60" value="5" class="form-slider">
+                                        <div class="slider-value">
+                                            <span id="durationValue">5</span>s
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="volumeControl">Volume</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="volumeControl" min="0" max="100" value="70" class="form-slider">
+                                        <div class="slider-value">
+                                            <span id="volumeValue">70</span>%
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="checkbox-container">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="loopAudio">
+                                            <span class="checkbox-custom"></span>
+                                            Loop audio until manually stopped
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="test-section">
+                                    <button id="testCurrentSettings" class="btn btn-primary">
+                                        🔊 Test Current Settings
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- File Management -->
+                        <div class="sound-section">
+                            <div class="section-title">File Management</div>
+                            <div class="files-management">
+                                <div id="filesManagementContainer" class="files-grid">
+                                    <div class="empty-state">No files to manage</div>
+                                </div>
+                                <div class="storage-info">
+                                    <div class="storage-stats">
+                                        <div class="stat-item">
+                                            <span class="stat-label">Files Uploaded:</span>
+                                            <span id="filesCount">0</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Total Size:</span>
+                                            <span id="totalSize">0 MB</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Max Files:</span>
+                                            <span>5</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="resetAudioSettings">🔄 Reset to Defaults</button>
+                            <button class="btn btn-primary" id="saveAudioSettings">💾 Save Settings</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monitoring Page -->
+                <div id="monitoring" class="page-content">
+                    <div class="page-header">
+                        <h2>Monitoring Controls</h2>
+                        <p>Advanced monitoring and alert settings</p>
+                    </div>
+
+                    <div class="monitoring-sections">
+                        <div class="monitoring-section">
+                            <div class="section-title">Monitoring Controls</div>
+                            <div class="control-grid">
+                                <div class="toggle-control">
+                                    <div class="toggle-info">
+                                        <label class="toggle-label">Disable Alarm</label>
+                                        <p class="toggle-description">Stops sound but still tracks tickets</p>
+                                    </div>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="disableAlarm">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+
+                                <div class="toggle-control">
+                                    <div class="toggle-info">
+                                        <label class="toggle-label">Disable Polling</label>
+                                        <p class="toggle-description">Stops everything</p>
+                                    </div>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="disablePoll">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="monitoring-section">
+                            <div class="section-title">Alert Conditions</div>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="alertCondition" value="nonZeroCount" checked>
+                                    <span class="radio-custom"></span>
+                                    Count is > 0
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="alertCondition" value="newTicket">
+                                    <span class="radio-custom"></span>
+                                    New ticket appears
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="monitoring-section">
+                            <div class="section-title">Polling Settings</div>
+                            <div class="form-group">
+                                <label class="form-label" for="pollInterval">Poll Interval (minutes)</label>
+                                <input id="pollInterval" type="number" class="form-control" placeholder="5" min="1" max="60" />
+                                <div class="help-text">Default is 5 minutes</div>
+                            </div>
+                        </div>
+
+                        <div class="monitoring-section">
+                            <div class="section-title">Testing</div>
+                            <div class="test-controls">
+                                <button class="btn btn-secondary" id="testAudioBtn">🔊 Test Audio</button>
+                                <button class="btn btn-secondary" id="testNotificationBtn">🔔 Test Notification</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- About Page -->
+                <div id="about" class="page-content">
+                    <div class="page-header">
+                        <h2>About</h2>
+                        <p>Extension information and support</p>
+                    </div>
+
+                    <div class="about-content">
+                        <div class="about-card">
+                            <div class="about-header">
+                                <img src="images/ITSM128.png" alt="ServiceNow Audio Alerts" class="about-logo">
+                                <div class="about-info">
+                                    <h3>ServiceNow Audio Alerts</h3>
+                                    <p class="version">Version 1.0</p>
+                                    <p class="description">Professional queue monitoring system for ServiceNow with customizable audio alerts</p>
+                                </div>
+                            </div>
+
+                            <div class="about-details">
+                                <div class="detail-section">
+                                    <h4>Features</h4>
+                                    <ul class="feature-list">
+                                        <li>Real-time ServiceNow queue monitoring</li>
+                                        <li>Customizable audio notifications</li>
+                                        <li>Professional dashboard with analytics</li>
+                                        <li>Secure file upload and storage</li>
+                                        <li>Advanced monitoring controls</li>
+                                    </ul>
+                                </div>
+
+                                <div class="detail-section">
+                                    <h4>Support</h4>
+                                    <div class="support-info">
+                                        <p><strong>Developer:</strong> Hirdesh Mewada</p>
+                                        <p><strong>Email:</strong> <a href="mailto:hirdeshrajput143@gmail.com">hirdeshrajput143@gmail.com</a></p>
+                                        <p><strong>GitHub:</strong> <a href="https://github.com/hirdeshmewada/servicenow-audio-alert-chrome-extension" target="_blank">hirdeshmewada/servicenow-audio-alert-chrome-extension</a></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toastNotification" class="toast-notification" style="display: none;">
+        <div class="toast-content">
+            <span class="toast-icon" id="toastIcon">✅</span>
+            <span class="toast-message" id="toastMessage">Settings saved successfully!</span>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <script type="module" src="js/home.js"></script>
+</body>
+</html>

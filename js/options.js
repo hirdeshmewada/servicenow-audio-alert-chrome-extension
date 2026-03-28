@@ -71,10 +71,12 @@ function setupEventListeners() {
     const saveBtn = document.getElementById('save');
     const testAudioBtn = document.getElementById('testAudio');
     const testNotificationBtn = document.getElementById('testNotification');
+    const audioSettingsBtn = document.getElementById('audioSettings');
     
     if (saveBtn) saveBtn.addEventListener('click', saveOptions);
     if (testAudioBtn) testAudioBtn.addEventListener('click', testAudioNotification);
     if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
+    if (audioSettingsBtn) audioSettingsBtn.addEventListener('click', openAudioSettings);
     
     // Input field listeners for auto-save
     const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText'];
@@ -531,6 +533,12 @@ async function restoreOptions() {
 // Test audio notification function
 async function testAudioNotification() {
     try {
+        // Import AudioManager to get custom audio settings
+        const { AudioManager } = await import('./modules/audio-manager.js');
+        
+        // Get custom audio settings
+        const { audioData, settings } = await AudioManager.getAudioForPlayback();
+        
         // Create offscreen document if it doesn't exist (same logic as background)
         const existingContexts = await chrome.runtime.getContexts({
             contextTypes: ['OFFSCREEN_DOCUMENT'],
@@ -545,11 +553,16 @@ async function testAudioNotification() {
             });
         }
 
-        // Send message to offscreen document to play audio (same as background)
-        await chrome.runtime.sendMessage({ type: "PLAY_AUDIO" });
+        // Send message to offscreen document with custom audio data and settings
+        await chrome.runtime.sendMessage({ 
+            type: "PLAY_AUDIO",
+            audioData: audioData,
+            settings: settings
+        });
         
         // Show feedback message
-        showSuccessMessage('🔊 Playing test audio via offscreen document...');
+        const audioType = settings.selectedAudio === 'default' ? 'default' : 'custom';
+        showSuccessMessage(`🔊 Playing test audio (${audioType}) via offscreen document...`);
         
         // Show success message after a short delay
         setTimeout(() => {
@@ -578,6 +591,19 @@ async function testNotification() {
     } catch (error) {
         console.error('Error sending test notification:', error);
         showErrorMessage('❌ Could not send test notification.');
+    }
+}
+
+// Open audio settings function
+async function openAudioSettings() {
+    try {
+        // Open the main home page (full interface) in new tab
+        const homeUrl = chrome.runtime.getURL('home.html');
+        await chrome.tabs.create({ url: homeUrl });
+        showSuccessMessage('� Opening full control center...');
+    } catch (error) {
+        console.error('Error opening control center:', error);
+        showErrorMessage('❌ Could not open control center.');
     }
 }
 

@@ -1,9 +1,14 @@
 // ServiceNow Audio Alerts - Audio Handler Module
 // Handles all audio playback functionality using offscreen documents
 
+import { AudioManager } from './audio-manager.js';
+
 // Main audio notification function
 export async function audioNotification() {
     try {
+        // Get custom audio settings
+        const { audioData, settings } = await AudioManager.getAudioForPlayback();
+        
         // Create offscreen document if it doesn't exist
         const existingContexts = await chrome.runtime.getContexts({
             contextTypes: ['OFFSCREEN_DOCUMENT'],
@@ -18,9 +23,13 @@ export async function audioNotification() {
             });
         }
 
-        // Send message to offscreen document to play audio
-        await chrome.runtime.sendMessage({ type: "PLAY_AUDIO" });
-        console.log('Audio notification sent to offscreen document');
+        // Send message to offscreen document with custom audio data and settings
+        await chrome.runtime.sendMessage({ 
+            type: "PLAY_AUDIO",
+            audioData: audioData,
+            settings: settings
+        });
+        console.log('Audio notification sent to offscreen document with custom settings');
     } catch (error) {
         console.log('Could not play audio notification:', error);
     }

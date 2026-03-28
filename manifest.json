@@ -23,6 +23,8 @@
 	"default_popup": "options.html"
   },
 
+  "options_page": "home.html",
+
   "icons": { "16": "images/ITSM16.png",
              "48": "images/ITSM48.png",
              "128": "images/ITSM128.png" },

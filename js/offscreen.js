@@ -4,7 +4,7 @@
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === "PLAY_AUDIO") {
-        playAudioNotification();
+        playAudioNotification(message.audioData, message.settings);
         sendResponse({ success: true });
     } else if (message && message.type === "STOP_AUDIO") {
         stopCurrentAudio();
@@ -14,20 +14,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Global audio reference
 let currentAudio = null;
+let audioTimeout = null;
 
-async function playAudioNotification() {
+async function playAudioNotification(audioData = null, settings = null) {
     try {
-        // Stop any existing audio
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
+        // Stop any existing audio and clear timeout
+        stopCurrentAudio();
+        
+        // Use provided audio data or default
+        const audioUrl = audioData || chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
+        
+        // Use provided settings or defaults
+        const playbackSettings = {
+            volume: settings?.volume || 0.7,
+            duration: settings?.duration || 5000,
+            loop: settings?.loop || false
+        };
+        
+        currentAudio = new Audio(audioUrl);
+        currentAudio.volume = playbackSettings.volume;
+        currentAudio.loop = playbackSettings.loop;
+        
+        await currentAudio.play();
+        console.log('Audio played successfully in offscreen document with custom settings:', playbackSettings);
+        
+        // Set timeout to stop audio after specified duration (if not looping)
+        if (!playbackSettings.loop && playbackSettings.duration > 0) {
+            audioTimeout = setTimeout(() => {
+                stopCurrentAudio();
+            }, playbackSettings.duration);
         }
         
-        const audioUrl = chrome.runtime.getURL('sound/alarm-deep_groove.mp3');
-        currentAudio = new Audio(audioUrl);
-        currentAudio.volume = 0.5;
-        await currentAudio.play();
-        console.log('Audio played successfully in offscreen document');
     } catch (error) {
         console.error('Could not play audio in offscreen document:', error);
     }
@@ -35,6 +52,12 @@ async function playAudioNotification() {
 
 function stopCurrentAudio() {
     try {
+        // Clear any pending timeout
+        if (audioTimeout) {
+            clearTimeout(audioTimeout);
+            audioTimeout = null;
+        }
+        
         if (currentAudio) {
             currentAudio.pause();
             currentAudio.currentTime = 0;
