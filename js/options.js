@@ -61,22 +61,20 @@ function setupEventListeners() {
     });
 
     // Header controls
-    const startStopBtn = document.getElementById('startStopBtn');
     const stopAlarmBtn = document.getElementById('stopAlarmBtn');
     
-    if (startStopBtn) startStopBtn.addEventListener('click', toggleMonitoring);
     if (stopAlarmBtn) stopAlarmBtn.addEventListener('click', stopCurrentAlarm);
 
     // Button listeners
     const saveBtn = document.getElementById('save');
     const testAudioBtn = document.getElementById('testAudio');
     const testNotificationBtn = document.getElementById('testNotification');
-    const audioSettingsBtn = document.getElementById('audioSettings');
+    const settingsBtn = document.getElementById('openSettings');
     
     if (saveBtn) saveBtn.addEventListener('click', saveOptions);
     if (testAudioBtn) testAudioBtn.addEventListener('click', testAudioNotification);
     if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
-    if (audioSettingsBtn) audioSettingsBtn.addEventListener('click', openAudioSettings);
+    if (settingsBtn) settingsBtn.addEventListener('click', openAudioSettings);
     
     // Input field listeners for auto-save
     const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText'];
@@ -598,9 +596,9 @@ async function testNotification() {
 async function openAudioSettings() {
     try {
         // Open the main home page (full interface) in new tab
-        const homeUrl = chrome.runtime.getURL('home.html');
+        const homeUrl = chrome.runtime.getURL('home/home.html');
         await chrome.tabs.create({ url: homeUrl });
-        showSuccessMessage('� Opening full control center...');
+        showSuccessMessage('⚙️ Opening full control center...');
     } catch (error) {
         console.error('Error opening control center:', error);
         showErrorMessage('❌ Could not open control center.');

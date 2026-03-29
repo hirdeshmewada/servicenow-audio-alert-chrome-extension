@@ -1,0 +1,105 @@
+/**
+ * Home Navigation Component Styles
+ * Separated from options.css to prevent conflicts
+ * Only applies to home.html navigation
+ */
+
+/* Vertical Navigation - Home Only */
+.vertical-nav {
+    width: 280px;
+    background: var(--background-white);
+    border-right: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-header {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--secondary-light);
+    flex-shrink: 0;
+}
+
+.nav-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.nav-menu {
+    list-style: none;
+    padding: 16px 0;
+    margin: 0;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.nav-item {
+    margin: 2px 12px;
+}
+
+.nav-item a {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.nav-item a:hover {
+    background: var(--primary-light);
+    color: var(--primary-color);
+    transform: translateX(4px);
+}
+
+.nav-item.active a {
+    background: var(--primary-color);
+    color: white;
+    box-shadow: var(--shadow-sm);
+}
+
+.nav-icon {
+    font-size: 18px;
+    margin-right: 12px;
+    width: 20px;
+    text-align: center;
+}
+
+.nav-text {
+    flex: 1;
+}
+
+/* Responsive Navigation */
+@media (max-width: 768px) {
+    .nav-menu {
+        display: flex;
+        overflow-x: auto;
+        padding: 8px;
+    }
+    
+    .nav-item {
+        margin: 0 4px;
+        flex-shrink: 0;
+    }
+    
+    .nav-item a {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+    
+    .nav-text {
+        display: none;
+    }
+}

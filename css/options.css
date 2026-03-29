@@ -212,6 +212,29 @@ label{
 	box-shadow: var(--shadow);
 }
 
+/* Settings tab styling */
+.settings-tab {
+    margin-left: auto;
+    padding: 8px 12px;
+    font-size: 16px;
+    min-width: 40px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.settings-tab:hover {
+    background: var(--primary-dark);
+    transform: scale(1.1);
+}
+
+.settings-tab:active {
+    transform: scale(0.95);
+}
+
 /* Make it compact when used as browser_action popup */
 @media (max-width: 520px){
 	.settings{
@@ -219,6 +242,11 @@ label{
 	}
 	.form-control{
 		width: 100% !important;
+	}
+	.settings-tab {
+		padding: 6px 8px;
+		font-size: 14px;
+		min-width: 35px;
 	}
 }
 
