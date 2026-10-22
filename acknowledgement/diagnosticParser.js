@@ -60,13 +60,21 @@ InitialAcknowledgement.parseDiagnosticEntry = function (rawValue) {
             
             // This is a data row
             if (messageColIndex >= 0 && cells[messageColIndex]) {
-                const msgValue = (cells[messageColIndex].textContent || '').trim();
+                // Convert <br/> to newlines before getting text
+                const msgCell = cells[messageColIndex];
+                const brTags = msgCell.querySelectorAll('br');
+                brTags.forEach(br => br.replaceWith('\n'));
+                const msgValue = (msgCell.textContent || '').trim();
                 if (msgValue && msgValue !== 'Message' && msgValue !== 'Logs') {
                     message = msgValue;
                 }
             }
             if (logsColIndex >= 0 && cells[logsColIndex]) {
-                const logValue = (cells[logsColIndex].textContent || '').trim();
+                // Convert <br/> to newlines before getting text
+                const logCell = cells[logsColIndex];
+                const brTags = logCell.querySelectorAll('br');
+                brTags.forEach(br => br.replaceWith('\n'));
+                const logValue = (logCell.textContent || '').trim();
                 if (logValue && logValue !== 'Message' && logValue !== 'Logs') {
                     logs = logValue;
                 }
@@ -152,7 +160,9 @@ InitialAcknowledgement._isBgpEntry = function (entry) {
 };
 
 InitialAcknowledgement._isPingEntry = function (entry) {
-    return (entry.message || '').toLowerCase().indexOf('ping') !== -1;
+    const message = (entry.message || '').toLowerCase();
+    const logs = (entry.logs || '').toLowerCase();
+    return message.indexOf('ping') !== -1 || logs.indexOf('ping') !== -1;
 };
 
 InitialAcknowledgement._ipv4List = function (text) {
