@@ -51,7 +51,7 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
     }
 
     blocks.push('Issue Reported:');
-    blocks.push('Customer reported link flapping / service instability.');
+    blocks.push('Customer reported an issue.');
     blocks.push('');
 
     if (serviceLines.length) {
@@ -79,11 +79,6 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
         blocks.push(data.pingText);
         blocks.push('');
     }
-
-    // Traffic Status section
-    blocks.push('Traffic Status:');
-    blocks.push('Traffic flow verification completed and service is currently carrying traffic.');
-    blocks.push('');
     
     // Add logs section if available
     if (data.rawLogs && data.rawLogs.length > 0) {

@@ -239,9 +239,21 @@ InitialAcknowledgement._cleanLogOutput = function (logText) {
     // Remove "[code] Insights: Diagnostic Update Message Logs" prefix
     cleaned = cleaned.replace(/\[code\]\s*Insights:\s*Diagnostic Update Message Logs\s*/gi, '');
     
-    // Remove message text before the actual command (everything before the PE name pattern)
-    // PE name pattern: starts with lowercase letters, numbers, hyphens, followed by space and command
-    cleaned = cleaned.replace(/^[^a-z0-9]*([a-z0-9\-]+\s+show|[a-z0-9\-]+\s+ping)/i, '$1');
+    // Remove the message line (first line before the command)
+    // Message lines are like: "No Issue On LM. PE-CPE protocol is UP. Engineer to verify customer service"
+    // or: "PE-CPE ping response is OK, Engineer to verify service with customer"
+    const lines = cleaned.split('\n').filter(l => l.trim());
+    if (lines.length > 0) {
+        // Find the first line that looks like a command (starts with PE name pattern)
+        const commandLineIndex = lines.findIndex(line => /^[a-z0-9\-]+\s+(show|ping|traceroute)/i.test(line));
+        if (commandLineIndex > -1) {
+            // Keep from command line onwards
+            cleaned = lines.slice(commandLineIndex).join('\n').trim();
+        } else {
+            // If no command found, remove the first line (message) and keep the rest
+            cleaned = lines.slice(1).join('\n').trim();
+        }
+    }
     
     // Remove "[/code]" and "by INSIGHTS" suffix
     cleaned = cleaned.replace(/\s*\[\/code\]\s*by\s*INSIGHTS\s*/gi, '');
@@ -250,9 +262,9 @@ InitialAcknowledgement._cleanLogOutput = function (logText) {
     cleaned = cleaned.replace(/\[code\]|\[\/code\]/gi, '');
     
     // Remove duplicate commands (sometimes the command appears twice in the log)
-    const lines = cleaned.split('\n').filter(l => l.trim());
-    if (lines.length > 0) {
-        const firstLine = lines[0].trim();
+    const finalLines = cleaned.split('\n').filter(l => l.trim());
+    if (finalLines.length > 0) {
+        const firstLine = finalLines[0].trim();
         // Check if the command repeats later in the text
         const secondOccurrence = cleaned.indexOf(firstLine, firstLine.length + 1);
         if (secondOccurrence > -1) {

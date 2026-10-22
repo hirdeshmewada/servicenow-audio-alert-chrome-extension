@@ -35,8 +35,29 @@ InitialAcknowledgement.parseDiagnosticEntry = function (rawValue) {
     });
 
     const plain = InitialAcknowledgement._textFromHtml(html).replace(/\r/g, '');
-    if (!message) message = InitialAcknowledgement._section(plain, 'Message', ['Logs']);
-    if (!logs) logs = InitialAcknowledgement._section(plain, 'Logs', ['Message']);
+    
+    // Handle specific log format: Logs [code]FLT ID: ...[/code] [code] Insights: Diagnostic Update Message Logs <message> <command output>
+    if (rows.length === 0) {
+        // Remove "Logs [code]FLT ID: ...[/code]" prefix
+        let cleaned = plain.replace(/Logs\s*\[code\]FLT ID:\s*[\w\d]+\s*\[\/code\]\s*/gi, '');
+        
+        // Remove "[code] Insights: Diagnostic Update Message Logs" prefix
+        cleaned = cleaned.replace(/\[code\]\s*Insights:\s*Diagnostic Update Message Logs\s*/gi, '');
+        
+        // Extract message (first line before the command)
+        const lines = cleaned.split('\n').filter(l => l.trim());
+        if (lines.length > 0) {
+            message = lines[0].trim();
+            // Logs is everything after the message line
+            logs = lines.slice(1).join('\n').trim();
+        } else {
+            message = cleaned;
+            logs = cleaned;
+        }
+    } else {
+        if (!message) message = InitialAcknowledgement._section(plain, 'Message', ['Logs']);
+        if (!logs) logs = InitialAcknowledgement._section(plain, 'Logs', ['Message']);
+    }
 
     return {
         message: (message || '').trim(),
@@ -63,7 +84,10 @@ InitialAcknowledgement.filterDiagnosticWorkNotes = function (records) {
     return (records || []).filter(function (record) {
         return record.element === 'work_notes' &&
             typeof record.value === 'string' &&
-            record.value.indexOf(InitialAcknowledgement.DIAGNOSTIC_MARKER) !== -1;
+            (record.value.indexOf(InitialAcknowledgement.DIAGNOSTIC_MARKER) !== -1 ||
+             record.value.toLowerCase().indexOf('diagnostic') !== -1 ||
+             record.value.toLowerCase().indexOf('bgp') !== -1 ||
+             record.value.toLowerCase().indexOf('ping') !== -1);
     });
 };
 
@@ -101,12 +125,15 @@ InitialAcknowledgement.extractBgp = function (entry) {
 
     const lines = [];
     if (peerIp) {
-        lines.push('BGP session is currently established with peer ' + peerIp + '.');
+        lines.push('BGP session is established with peer ' + peerIp + '.');
     }
     if (uptime) {
         lines.push('BGP uptime observed: ' + uptime + '.');
     }
 
+    // Also include the message for context
+    const message = entry.message || '';
+    
     return {
         peerIp: peerIp,
         uptime: uptime,
@@ -153,19 +180,25 @@ InitialAcknowledgement.extractPing = function (entry) {
 
 InitialAcknowledgement.parseDiagnostics = function (journalRecords) {
     const notes = InitialAcknowledgement.filterDiagnosticWorkNotes(journalRecords);
+    console.log('[ACK] Total journal records:', journalRecords.length);
     console.log('[ACK] Diagnostic entries found:', notes.length);
+    console.log('[ACK] Sample diagnostic entry:', notes[0] ? notes[0].value.substring(0, 200) : 'none');
 
     let bgp = { peerIp: '', uptime: '', fullOutput: '', text: '' };
     let ping = { packetLoss: null, averageLatency: '', text: '' };
 
     notes.forEach(function (note) {
         const entry = InitialAcknowledgement.parseDiagnosticEntry(note.value || '');
+        console.log('[ACK] Parsed entry - message:', entry.message.substring(0, 100), 'logs length:', entry.logs.length);
+        
         if (InitialAcknowledgement._isInterfaceVprn(entry)) return;
 
         if (!bgp.text && InitialAcknowledgement._isBgpEntry(entry)) {
+            console.log('[ACK] Found BGP entry');
             bgp = InitialAcknowledgement.extractBgp(entry);
         }
         if (!ping.text && InitialAcknowledgement._isPingEntry(entry)) {
+            console.log('[ACK] Found Ping entry');
             ping = InitialAcknowledgement.extractPing(entry);
         }
     });
