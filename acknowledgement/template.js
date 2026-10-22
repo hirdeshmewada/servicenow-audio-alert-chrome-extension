@@ -26,13 +26,11 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
         InitialAcknowledgement._line('Last Mile Provider', data.lastMileProvider),
         InitialAcknowledgement._line('Management Type', data.managementType),
         InitialAcknowledgement._line('Scope', data.scope),
-        InitialAcknowledgement._line('CPE Managed', data.cpeManaged)
+        InitialAcknowledgement._line('CPE Managed', data.cpeManaged),
+        InitialAcknowledgement._line('Circuit Type', data.circuitType),
+        InitialAcknowledgement._line('Primary/Secondary', data.prisec),
+        InitialAcknowledgement._line('Bandwidth', data.bandwidth)
     ].filter(Boolean);
-    
-    // Only add Circuit Type if it has a value
-    if (InitialAcknowledgement._hasValue(data.circuitType)) {
-        serviceLines.push('Circuit Type: ' + data.circuitType);
-    }
 
     const observation = ['The service is currently UP.'];
     if (InitialAcknowledgement._hasValue(data.bgpText)) observation.push(data.bgpText);
@@ -67,30 +65,22 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
     blocks.push('');
     observation.forEach(function (line) { blocks.push(line); });
     blocks.push('');
-
-    // Add Logs section if diagnostic logs are available
-    const logSections = [];
-    if (InitialAcknowledgement._hasValue(data.bgpLogs)) {
-        logSections.push('BGP Verification:');
-        logSections.push('');
-        logSections.push(data.bgpLogs.trim());
-        logSections.push('');
-    }
-    if (InitialAcknowledgement._hasValue(data.pingLogs)) {
-        logSections.push('Ping Verification:');
-        logSections.push('');
-        logSections.push(data.pingLogs.trim());
-        logSections.push('');
-    }
     
-    if (logSections.length > 0) {
+    // Add logs section if available
+    if (data.logs && data.logs.length > 0) {
         blocks.push('Logs:');
         blocks.push('');
-        logSections.forEach(function (logSection) {
-            blocks.push(logSection);
+        data.logs.forEach(function (log) {
+            if (log.peName) blocks.push('PE: ' + log.peName);
+            if (log.command) blocks.push('Command: ' + log.command);
+            if (log.output) {
+                blocks.push('Output:');
+                blocks.push(log.output);
+            }
+            blocks.push('');
         });
     }
-
+    
     blocks.push('Further monitoring is in progress.');
 
     return blocks.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
