@@ -209,7 +209,7 @@ InitialAcknowledgement._assetSysIdFromCase = function (caseRecord) {
 
 InitialAcknowledgement._extractServiceType = function (disposalReason) {
     if (!disposalReason) return '';
-    const match = disposalReason.match(/Product Flavour\s*:\s*([^\s]+)/i);
+    const match = disposalReason.match(/Product Flavour\s*:\s*(.+?)(?:\s*Source Type|$)/i);
     return match ? match[1].trim() : '';
 };
 
@@ -219,51 +219,49 @@ InitialAcknowledgement._extractLogs = function (diagnostics) {
     const pingLogs = diagnostics.ping.fullOutput || '';
     
     if (bgpLogs) {
-        const parsed = InitialAcknowledgement._parseCommandLog(bgpLogs);
-        if (parsed) logs.push(parsed);
+        const cleaned = InitialAcknowledgement._cleanLogOutput(bgpLogs);
+        if (cleaned) logs.push(cleaned);
     }
-    
     if (pingLogs) {
-        const parsed = InitialAcknowledgement._parseCommandLog(pingLogs);
-        if (parsed) logs.push(parsed);
+        const cleaned = InitialAcknowledgement._cleanLogOutput(pingLogs);
+        if (cleaned) logs.push(cleaned);
     }
     
     return logs;
 };
 
-InitialAcknowledgement._parseCommandLog = function (logText) {
-    if (!logText) return null;
+InitialAcknowledgement._cleanLogOutput = function (logText) {
+    if (!logText) return '';
     
-    // Remove FLT ID and "Insights: Diagnostic Update Message Logs" prefixes
-    const cleaned = logText
-        .replace(/FLT ID\s*:\s*[\w\d]+/gi, '')
-        .replace(/Insights\s*:\s*Diagnostic Update Message Logs/gi, '')
-        .replace(/by\s*INSIGHTS/gi, '')
-        .trim();
+    // Remove "Logs [code]FLT ID: ...[/code]" prefix
+    let cleaned = logText.replace(/Logs\s*\[code\]FLT ID:\s*[\w\d]+\s*\[\/code\]\s*/gi, '');
     
-    if (!cleaned) return null;
+    // Remove "[code] Insights: Diagnostic Update Message Logs" prefix
+    cleaned = cleaned.replace(/\[code\]\s*Insights:\s*Diagnostic Update Message Logs\s*/gi, '');
     
-    // Extract PE name (first word before command)
+    // Remove message text before the actual command (everything before the PE name pattern)
+    // PE name pattern: starts with lowercase letters, numbers, hyphens, followed by space and command
+    cleaned = cleaned.replace(/^[^a-z0-9]*([a-z0-9\-]+\s+show|[a-z0-9\-]+\s+ping)/i, '$1');
+    
+    // Remove "[/code]" and "by INSIGHTS" suffix
+    cleaned = cleaned.replace(/\s*\[\/code\]\s*by\s*INSIGHTS\s*/gi, '');
+    
+    // Remove any remaining [code] tags
+    cleaned = cleaned.replace(/\[code\]|\[\/code\]/gi, '');
+    
+    // Remove duplicate commands (sometimes the command appears twice in the log)
     const lines = cleaned.split('\n').filter(l => l.trim());
-    if (lines.length === 0) return null;
+    if (lines.length > 0) {
+        const firstLine = lines[0].trim();
+        // Check if the command repeats later in the text
+        const secondOccurrence = cleaned.indexOf(firstLine, firstLine.length + 1);
+        if (secondOccurrence > -1) {
+            // Remove the first occurrence (keep the second one with the output)
+            cleaned = cleaned.substring(secondOccurrence).trim();
+        }
+    }
     
-    const firstLine = lines[0].trim();
-    const parts = firstLine.split(/\s+/);
-    const peName = parts[0] || '';
-    
-    // Extract command (rest of first line after PE name)
-    const command = parts.slice(1).join(' ');
-    
-    // Extract output (remaining lines)
-    const output = lines.slice(1).join('\n').trim();
-    
-    if (!peName && !command && !output) return null;
-    
-    return {
-        peName: peName,
-        command: command,
-        output: output
-    };
+    return cleaned.trim();
 };
 
 InitialAcknowledgement._extractServiceData = function (caseRecord, assetRecord) {
@@ -348,7 +346,7 @@ InitialAcknowledgement.generate = async function () {
         bandwidth: service.bandwidth,
         bgpText: diagnostics.bgp.text,
         pingText: diagnostics.ping.text,
-        logs: logs
+        rawLogs: logs
     });
 
     console.log('[ACK] Final acknowledgement:\n' + acknowledgement);

@@ -32,10 +32,6 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
         InitialAcknowledgement._line('Bandwidth', data.bandwidth)
     ].filter(Boolean);
 
-    const observation = ['The service is currently UP.'];
-    if (InitialAcknowledgement._hasValue(data.bgpText)) observation.push(data.bgpText);
-    if (InitialAcknowledgement._hasValue(data.pingText)) observation.push(data.pingText);
-
     const blocks = [];
     blocks.push('Dear Customer,');
     blocks.push('');
@@ -54,6 +50,10 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
         blocks.push('');
     }
 
+    blocks.push('Issue Reported:');
+    blocks.push('Customer reported link flapping / service instability.');
+    blocks.push('');
+
     if (serviceLines.length) {
         blocks.push('Service Details:');
         blocks.push('');
@@ -63,25 +63,41 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
 
     blocks.push('Observation:');
     blocks.push('');
-    observation.forEach(function (line) { blocks.push(line); });
+    blocks.push('The service is currently UP.');
+    blocks.push('');
+
+    // Protocol Status section
+    if (InitialAcknowledgement._hasValue(data.bgpText)) {
+        blocks.push('Protocol Status:');
+        blocks.push(data.bgpText);
+        blocks.push('');
+    }
+
+    // Endpoint Reachability section
+    if (InitialAcknowledgement._hasValue(data.pingText)) {
+        blocks.push('Endpoint Reachability:');
+        blocks.push(data.pingText);
+        blocks.push('');
+    }
+
+    // Traffic Status section
+    blocks.push('Traffic Status:');
+    blocks.push('Traffic flow verification completed and service is currently carrying traffic.');
     blocks.push('');
     
     // Add logs section if available
-    if (data.logs && data.logs.length > 0) {
+    if (data.rawLogs && data.rawLogs.length > 0) {
         blocks.push('Logs:');
         blocks.push('');
-        data.logs.forEach(function (log) {
-            if (log.peName) blocks.push('PE: ' + log.peName);
-            if (log.command) blocks.push('Command: ' + log.command);
-            if (log.output) {
-                blocks.push('Output:');
-                blocks.push(log.output);
-            }
+        data.rawLogs.forEach(function (log) {
+            blocks.push(log);
             blocks.push('');
         });
     }
     
-    blocks.push('Further monitoring is in progress.');
+    blocks.push('Next Action:');
+    blocks.push('');
+    blocks.push('Further monitoring and validation of service stability is in progress.');
 
     return blocks.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 };
