@@ -24,20 +24,71 @@ InitialAcknowledgement.parseDiagnosticEntry = function (rawValue) {
     let logs = '';
 
     const rows = doc.querySelectorAll('tr');
+    
+    // Find header row to identify column indices
+    let messageColIndex = -1;
+    let logsColIndex = -1;
+    
     rows.forEach(function (row) {
         const cells = row.querySelectorAll('td, th');
         if (!cells.length) return;
-        const label = (cells[0].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-        const valueCell = cells.length > 1 ? cells[1] : cells[0];
-        const value = (valueCell.innerText || valueCell.textContent || '').trim();
-        if (label.indexOf('message') !== -1) message = value;
-        if (label.indexOf('log') !== -1) logs = value;
+        
+        // Check if this is a header row
+        const firstCellText = (cells[0].textContent || '').trim().toLowerCase();
+        if (firstCellText === 'message' || firstCellText === 'logs') {
+            // This is a header row, find column indices
+            for (let i = 0; i < cells.length; i++) {
+                const cellText = (cells[i].textContent || '').trim().toLowerCase();
+                if (cellText === 'message') messageColIndex = i;
+                if (cellText === 'logs') logsColIndex = i;
+            }
+        }
     });
+    
+    // Now extract data from data rows
+    if (messageColIndex >= 0 || logsColIndex >= 0) {
+        rows.forEach(function (row) {
+            const cells = row.querySelectorAll('td, th');
+            if (!cells.length) return;
+            
+            // Skip header rows (cells with <b> tags or just labels)
+            const firstCell = cells[0];
+            if (firstCell.querySelector('b')) return;
+            
+            const firstCellText = (cells[0].textContent || '').trim().toLowerCase();
+            if (firstCellText === 'message' || firstCellText === 'logs') return;
+            
+            // This is a data row
+            if (messageColIndex >= 0 && cells[messageColIndex]) {
+                const msgValue = (cells[messageColIndex].textContent || '').trim();
+                if (msgValue && msgValue !== 'Message' && msgValue !== 'Logs') {
+                    message = msgValue;
+                }
+            }
+            if (logsColIndex >= 0 && cells[logsColIndex]) {
+                const logValue = (cells[logsColIndex].textContent || '').trim();
+                if (logValue && logValue !== 'Message' && logValue !== 'Logs') {
+                    logs = logValue;
+                }
+            }
+        });
+    } else {
+        // Fallback to old parsing logic
+        rows.forEach(function (row) {
+            const cells = row.querySelectorAll('td, th');
+            if (!cells.length) return;
+            const label = (cells[0].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const valueCell = cells.length > 1 ? cells[1] : cells[0];
+            const value = (valueCell.innerText || valueCell.textContent || '').trim();
+            if (label.indexOf('message') !== -1) message = value;
+            if (label.indexOf('log') !== -1) logs = value;
+        });
+    }
 
     const plain = InitialAcknowledgement._textFromHtml(html).replace(/\r/g, '');
     
-    // Handle specific log format: Logs [code]FLT ID: ...[/code] [code] Insights: Diagnostic Update Message Logs <message> <command output>
-    if (rows.length === 0) {
+    // If still no message/logs from HTML table, try plain text parsing
+    if (!message && !logs) {
         // Remove "Logs [code]FLT ID: ...[/code]" prefix
         let cleaned = plain.replace(/Logs\s*\[code\]FLT ID:\s*[\w\d]+\s*\[\/code\]\s*/gi, '');
         
@@ -55,6 +106,7 @@ InitialAcknowledgement.parseDiagnosticEntry = function (rawValue) {
             logs = cleaned;
         }
     } else {
+        // Fallback to section parsing if needed
         if (!message) message = InitialAcknowledgement._section(plain, 'Message', ['Logs']);
         if (!logs) logs = InitialAcknowledgement._section(plain, 'Logs', ['Message']);
     }
