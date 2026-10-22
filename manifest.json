@@ -34,10 +34,28 @@
 	"notifications",
 	"tabs",
 	"storage",
-	"offscreen"
+	"offscreen",
+	"clipboardWrite",
+	"scripting"
   ],
   
   "host_permissions": [
 	"https://*.service-now.com/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://*.service-now.com/*"],
+      "js": [
+        "js/first-ack/jsonv2-fetch.js",
+        "js/first-ack/extract-case.js",
+        "js/first-ack/extract-asset.js",
+        "js/first-ack/extract-diagnostics.js",
+        "js/first-ack/extract-raw-data.js",
+        "js/first-ack/content-first-ack.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
   ]
 }

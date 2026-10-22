@@ -75,6 +75,9 @@ function setupEventListeners() {
     if (testAudioBtn) testAudioBtn.addEventListener('click', testAudioNotification);
     if (testNotificationBtn) testNotificationBtn.addEventListener('click', testNotification);
     if (settingsBtn) settingsBtn.addEventListener('click', openAudioSettings);
+
+    const generateInitialAckBtn = document.getElementById('generateInitialAckBtn');
+    if (generateInitialAckBtn) generateInitialAckBtn.addEventListener('click', generateInitialAcknowledgement);
     
     // Input field listeners for auto-save
     const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText'];
@@ -152,6 +155,20 @@ function switchTab(tabName) {
     }
 
     currentTab = tabName;
+}
+
+async function generateInitialAcknowledgement() {
+    const button = document.getElementById('generateInitialAckBtn');
+    if (button) button.disabled = true;
+    try {
+        await InitialAcknowledgement.generate();
+        showSuccessMessage('Initial acknowledgement copied to clipboard');
+    } catch (error) {
+        console.error('[ACK] Generation failed:', error);
+        showErrorMessage(error && error.message ? error.message : 'Could not generate acknowledgement');
+    } finally {
+        if (button) button.disabled = false;
+    }
 }
 
 async function stopCurrentAlarm() {
