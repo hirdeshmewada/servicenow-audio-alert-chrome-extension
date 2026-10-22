@@ -10,6 +10,10 @@ InitialAcknowledgement._field = function (record, name) {
         const display = value.display_value !== undefined ? value.display_value : value.value;
         return display === undefined || display === null ? '' : String(display).trim();
     }
+    // If it's a string and looks like a sys_id, don't return it - we'll fetch display value separately
+    if (typeof value === 'string' && InitialAcknowledgement._SYS_ID.test(value)) {
+        return ''; // Return empty to indicate we need to fetch display value
+    }
     return String(value).trim();
 };
 
@@ -30,6 +34,38 @@ InitialAcknowledgement._firstFilled = function (record, names) {
         if (value && value.toLowerCase() !== 'undefined') return value;
     }
     return '';
+};
+
+InitialAcknowledgement._getReferenceDisplayValue = async function (origin, sysId, tableName) {
+    if (!sysId || !InitialAcknowledgement._SYS_ID.test(sysId)) return '';
+    try {
+        // Try the specified table if provided, otherwise try common tables
+        const tables = tableName ? [tableName] : ['core_company', 'cmn_location', 'account', 'sys_user', 'customer'];
+        
+        for (let i = 0; i < tables.length; i++) {
+            try {
+                const url = origin + '/' + tables[i] + '.do?sysparm_query=sys_id=' + encodeURIComponent(sysId) + '&JSONv2&sysparm_display_value=true&sysparm_fields=name,display_value';
+                const data = await InitialAcknowledgement._fetchJson(url);
+                const record = (data.records && data.records[0]) || null;
+                if (record) {
+                    const display = record.name || record.display_value || '';
+                    if (display) {
+                        console.log('[ACK] Found display value in table', tables[i], ':', display);
+                        return display;
+                    }
+                }
+            } catch (e) {
+                // Try next table
+                continue;
+            }
+        }
+        
+        console.log('[ACK] Could not find display value for sys_id', sysId, 'in any table');
+        return '';
+    } catch (error) {
+        console.log('[ACK] Could not fetch reference display value for', sysId, ':', error.message);
+        return '';
+    }
 };
 
 InitialAcknowledgement._toYesNo = function (value) {
@@ -184,7 +220,7 @@ InitialAcknowledgement.fetchTableRecord = async function (origin, table, sysId) 
 InitialAcknowledgement.fetchJournal = async function (origin, caseSysId) {
     const url = origin + '/sys_journal_field.do?sysparm_query=' +
         encodeURIComponent('element_id=' + caseSysId) +
-        '&JSONv2&sysparm_display_value=true&sysparm_limit=1000';
+        '&JSONv2&sysparm_display_value=true&sysparm_limit=1000&sysparm_order_by=sys_created_on&sysparm_order=DESC';
     const data = await InitialAcknowledgement._fetchJson(url);
     return data.records || [];
 };
@@ -212,19 +248,48 @@ InitialAcknowledgement._extractServiceData = function (caseRecord, assetRecord) 
     const circuitId = InitialAcknowledgement._firstFilled(combined, [
         'u_circuit_id', 'circuit_id', 'u_circuit', 'name', 'u_name', 'u_service_id'
     ]);
-    const customerName = InitialAcknowledgement._firstFilled(combined, [
+    
+    // Try to get customer name from display values first
+    let customerName = InitialAcknowledgement._firstFilled(combined, [
         'u_customer_name', 'u_customer', 'customer', 'account', 'u_account', 'company', 'u_site_name'
     ]);
+    
+    // If customerName is empty, check if we have a sys_id in the raw record and store it for later fetching
+    let customerSysId = '';
+    if (!customerName) {
+        const customerFields = ['u_customer_name', 'u_customer', 'customer', 'account', 'u_account', 'company', 'u_site_name'];
+        for (let i = 0; i < customerFields.length; i++) {
+            const rawValue = combined[customerFields[i]];
+            if (rawValue && typeof rawValue === 'string' && InitialAcknowledgement._SYS_ID.test(rawValue)) {
+                customerSysId = rawValue;
+                break;
+            }
+            if (rawValue && typeof rawValue === 'object' && rawValue.value && InitialAcknowledgement._SYS_ID.test(rawValue.value)) {
+                customerSysId = rawValue.value;
+                break;
+            }
+        }
+    }
+    
     const location = InitialAcknowledgement._firstFilled(combined, [
         'u_location', 'location', 'u_site', 'u_city', 'city', 'u_address', 'u_site_location', 'u_customer_site'
     ]);
     
-    console.log('[ACK] Customer display value:', customerName);
     console.log('[ACK] Circuit ID:', circuitId);
+    console.log('[ACK] Customer display:', customerName || '(sys_id: ' + customerSysId + ')');
+    console.log('[ACK] Service details:', {
+        serviceType: InitialAcknowledgement._firstFilled(combined, ['u_service_type', 'service_type', 'u_product_type', 'product', 'u_product', 'type', 'u_type']),
+        lastMileProvider: InitialAcknowledgement._field(assetRecord, 'u_a_end_ll_provider') || InitialAcknowledgement._field(caseRecord, 'u_a_end_ll_provider'),
+        managementType: InitialAcknowledgement._field(assetRecord, 'u_management_type') || InitialAcknowledgement._field(caseRecord, 'u_management_type'),
+        scope: InitialAcknowledgement._field(assetRecord, 'u_scope_of_management') || InitialAcknowledgement._field(caseRecord, 'u_scope_of_management'),
+        cpeManaged: InitialAcknowledgement._toYesNo(InitialAcknowledgement._field(assetRecord, 'u_cpe_managed') || InitialAcknowledgement._field(caseRecord, 'u_cpe_managed')),
+        circuitType: InitialAcknowledgement._circuitType(assetRecord) || InitialAcknowledgement._circuitType(caseRecord)
+    });
     
     return {
         circuitId: circuitId,
         customerName: customerName,
+        customerSysId: customerSysId,
         location: location,
         serviceType: InitialAcknowledgement._firstFilled(combined, [
             'u_service_type', 'service_type', 'u_product_type', 'product', 'u_product', 'type', 'u_type'
@@ -268,15 +333,24 @@ InitialAcknowledgement.generate = async function () {
     }
 
     const service = InitialAcknowledgement._extractServiceData(caseRecord, assetRecord);
+    
+    // If customer name is a sys_id, fetch the display value
+    if (service.customerSysId && !service.customerName) {
+        console.log('[ACK] Fetching customer display value for sys_id:', service.customerSysId);
+        service.customerName = await InitialAcknowledgement._getReferenceDisplayValue(context.origin, service.customerSysId);
+        console.log('[ACK] Fetched customer display value:', service.customerName);
+    }
 
     const journal = await InitialAcknowledgement.fetchJournal(context.origin, context.sysId);
     const diagnostics = InitialAcknowledgement.parseDiagnostics(journal);
 
-    console.log('[ACK] BGP detected:', !!diagnostics.bgp.text);
+    console.log('[ACK] Diagnostic count:', journal.length);
+    console.log('[ACK] Selected BGP entry:', diagnostics.bgp.entryIndex !== undefined ? diagnostics.bgp.entryIndex : 'none');
+    console.log('[ACK] Selected Ping entry:', diagnostics.ping.entryIndex !== undefined ? diagnostics.ping.entryIndex : 'none');
+    console.log('[ACK] BGP peer:', diagnostics.bgp.peerIp);
     console.log('[ACK] BGP uptime:', diagnostics.bgp.uptime);
-    console.log('[ACK] Ping detected:', !!diagnostics.ping.text);
-    console.log('[ACK] Packet loss:', diagnostics.ping.packetLoss);
-    console.log('[ACK] Latency:', diagnostics.ping.averageLatency);
+    console.log('[ACK] Ping loss:', diagnostics.ping.packetLoss);
+    console.log('[ACK] Ping latency:', diagnostics.ping.averageLatency);
 
     const acknowledgement = InitialAcknowledgement.buildAcknowledgement({
         circuitId: service.circuitId,
@@ -290,11 +364,11 @@ InitialAcknowledgement.generate = async function () {
         circuitType: service.circuitType,
         bgpText: diagnostics.bgp.text,
         pingText: diagnostics.ping.text,
-        bgpLogs: diagnostics.bgp.fullOutput,
-        pingLogs: diagnostics.ping.fullOutput
+        bgpLogs: diagnostics.bgp.cliOutput,
+        pingLogs: diagnostics.ping.cliOutput
     });
 
-    console.log('[ACK] Final clipboard text:\n' + acknowledgement);
+    console.log('[ACK] Final acknowledgement:\n' + acknowledgement);
     await InitialAcknowledgement.copyText(acknowledgement);
     return acknowledgement;
 };

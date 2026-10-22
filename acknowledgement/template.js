@@ -26,9 +26,13 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
         InitialAcknowledgement._line('Last Mile Provider', data.lastMileProvider),
         InitialAcknowledgement._line('Management Type', data.managementType),
         InitialAcknowledgement._line('Scope', data.scope),
-        InitialAcknowledgement._line('CPE Managed', data.cpeManaged),
-        InitialAcknowledgement._line('Circuit Type', data.circuitType)
+        InitialAcknowledgement._line('CPE Managed', data.cpeManaged)
     ].filter(Boolean);
+    
+    // Only add Circuit Type if it has a value
+    if (InitialAcknowledgement._hasValue(data.circuitType)) {
+        serviceLines.push('Circuit Type: ' + data.circuitType);
+    }
 
     const observation = ['The service is currently UP.'];
     if (InitialAcknowledgement._hasValue(data.bgpText)) observation.push(data.bgpText);
@@ -67,10 +71,16 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
     // Add Logs section if diagnostic logs are available
     const logSections = [];
     if (InitialAcknowledgement._hasValue(data.bgpLogs)) {
+        logSections.push('BGP Verification:');
+        logSections.push('');
         logSections.push(data.bgpLogs.trim());
+        logSections.push('');
     }
     if (InitialAcknowledgement._hasValue(data.pingLogs)) {
+        logSections.push('Ping Verification:');
+        logSections.push('');
         logSections.push(data.pingLogs.trim());
+        logSections.push('');
     }
     
     if (logSections.length > 0) {
@@ -78,7 +88,6 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
         blocks.push('');
         logSections.forEach(function (logSection) {
             blocks.push(logSection);
-            blocks.push('');
         });
     }
 
