@@ -209,16 +209,23 @@ InitialAcknowledgement._assetSysIdFromCase = function (caseRecord) {
 
 InitialAcknowledgement._extractServiceData = function (caseRecord, assetRecord) {
     const combined = Object.assign({}, caseRecord || {}, assetRecord || {});
+    const circuitId = InitialAcknowledgement._firstFilled(combined, [
+        'u_circuit_id', 'circuit_id', 'u_circuit', 'name', 'u_name', 'u_service_id'
+    ]);
+    const customerName = InitialAcknowledgement._firstFilled(combined, [
+        'u_customer_name', 'u_customer', 'customer', 'account', 'u_account', 'company', 'u_site_name'
+    ]);
+    const location = InitialAcknowledgement._firstFilled(combined, [
+        'u_location', 'location', 'u_site', 'u_city', 'city', 'u_address', 'u_site_location', 'u_customer_site'
+    ]);
+    
+    console.log('[ACK] Customer display value:', customerName);
+    console.log('[ACK] Circuit ID:', circuitId);
+    
     return {
-        circuitId: InitialAcknowledgement._firstFilled(combined, [
-            'u_circuit_id', 'circuit_id', 'u_circuit', 'name', 'u_name', 'u_service_id'
-        ]),
-        customerName: InitialAcknowledgement._firstFilled(combined, [
-            'u_customer_name', 'u_customer', 'customer', 'account', 'u_account', 'company', 'u_site_name'
-        ]),
-        location: InitialAcknowledgement._firstFilled(combined, [
-            'u_location', 'location', 'u_site', 'u_city', 'city', 'u_address', 'u_site_location', 'u_customer_site'
-        ]),
+        circuitId: circuitId,
+        customerName: customerName,
+        location: location,
         serviceType: InitialAcknowledgement._firstFilled(combined, [
             'u_service_type', 'service_type', 'u_product_type', 'product', 'u_product', 'type', 'u_type'
         ]),
@@ -249,7 +256,7 @@ InitialAcknowledgement.generate = async function () {
     if (!caseRecord) throw new Error('Case API returned no record.');
 
     const assetRef = InitialAcknowledgement._assetSysIdFromCase(caseRecord);
-    console.log('[ACK] Asset:', assetRef);
+    console.log('[ACK] Asset sys_id:', assetRef.sysId);
 
     let assetRecord = null;
     if (assetRef.sysId) {
@@ -261,10 +268,15 @@ InitialAcknowledgement.generate = async function () {
     }
 
     const service = InitialAcknowledgement._extractServiceData(caseRecord, assetRecord);
-    console.log('[ACK] Circuit:', service.circuitId);
 
     const journal = await InitialAcknowledgement.fetchJournal(context.origin, context.sysId);
     const diagnostics = InitialAcknowledgement.parseDiagnostics(journal);
+
+    console.log('[ACK] BGP detected:', !!diagnostics.bgp.text);
+    console.log('[ACK] BGP uptime:', diagnostics.bgp.uptime);
+    console.log('[ACK] Ping detected:', !!diagnostics.ping.text);
+    console.log('[ACK] Packet loss:', diagnostics.ping.packetLoss);
+    console.log('[ACK] Latency:', diagnostics.ping.averageLatency);
 
     const acknowledgement = InitialAcknowledgement.buildAcknowledgement({
         circuitId: service.circuitId,
@@ -277,10 +289,12 @@ InitialAcknowledgement.generate = async function () {
         cpeManaged: service.cpeManaged,
         circuitType: service.circuitType,
         bgpText: diagnostics.bgp.text,
-        pingText: diagnostics.ping.text
+        pingText: diagnostics.ping.text,
+        bgpLogs: diagnostics.bgp.fullOutput,
+        pingLogs: diagnostics.ping.fullOutput
     });
 
-    console.log('[ACK] Final acknowledgement:\n' + acknowledgement);
+    console.log('[ACK] Final clipboard text:\n' + acknowledgement);
     await InitialAcknowledgement.copyText(acknowledgement);
     return acknowledgement;
 };

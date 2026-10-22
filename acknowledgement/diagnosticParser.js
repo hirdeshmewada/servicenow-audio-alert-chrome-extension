@@ -9,6 +9,24 @@ InitialAcknowledgement._decodeHtml = function (html) {
     return template.value;
 };
 
+InitialAcknowledgement._htmlToPlainText = function (html) {
+    if (!html) return '';
+    let text = html;
+    // Replace <br> and <br/> with newlines
+    text = text.replace(/<br\s*\/?>/gi, '\n');
+    // Replace </p> and </div> with newlines
+    text = text.replace(/<\/p>/gi, '\n');
+    text = text.replace(/<\/div>/gi, '\n');
+    // Remove all HTML tags
+    text = text.replace(/<[^>]+>/g, '');
+    // Decode HTML entities
+    text = InitialAcknowledgement._decodeHtml(text);
+    // Clean up excessive whitespace
+    text = text.replace(/\s+/g, ' ');
+    text = text.replace(/\n\s+/g, '\n');
+    return text.trim();
+};
+
 InitialAcknowledgement._textFromHtml = function (html) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html || '', 'text/html');
@@ -16,6 +34,9 @@ InitialAcknowledgement._textFromHtml = function (html) {
 };
 
 InitialAcknowledgement.parseDiagnosticEntry = function (rawValue) {
+    // Convert HTML to plain text first
+    const plainText = InitialAcknowledgement._htmlToPlainText(rawValue || '');
+    
     const html = InitialAcknowledgement._decodeHtml(rawValue || '');
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
@@ -41,7 +62,7 @@ InitialAcknowledgement.parseDiagnosticEntry = function (rawValue) {
     return {
         message: (message || '').trim(),
         logs: (logs || '').trim(),
-        plain: plain
+        plain: plainText // Use the pre-converted plain text
     };
 };
 
@@ -73,13 +94,13 @@ InitialAcknowledgement._isInterfaceVprn = function (entry) {
 };
 
 InitialAcknowledgement._isBgpEntry = function (entry) {
-    const message = entry.message || '';
-    const blob = (message + '\n' + (entry.logs || '')).toLowerCase();
-    return message.indexOf(InitialAcknowledgement.BGP_MESSAGE_HINT) !== -1 || /\bbgp\b/.test(blob);
+    const fullText = ((entry.message || '') + '\n' + (entry.logs || '') + '\n' + (entry.plain || '')).toLowerCase();
+    return /\bbgp\b/.test(fullText);
 };
 
 InitialAcknowledgement._isPingEntry = function (entry) {
-    return (entry.message || '').toLowerCase().indexOf('ping') !== -1;
+    const fullText = ((entry.message || '') + '\n' + (entry.logs || '') + '\n' + (entry.plain || '')).toLowerCase();
+    return /\bping\b/.test(fullText) && /\bpacket loss\b/.test(fullText);
 };
 
 InitialAcknowledgement._ipv4List = function (text) {
@@ -87,17 +108,41 @@ InitialAcknowledgement._ipv4List = function (text) {
 };
 
 InitialAcknowledgement.extractBgp = function (entry) {
+    const fullText = (entry.message || '') + '\n' + (entry.logs || '') + '\n' + (entry.plain || '');
     const logs = entry.logs || '';
-    const quoted = logs.match(/"((?:\d{1,3}\.){3}\d{1,3})"/);
-    const standalone = logs.match(/(?:^|\n)\s*((?:\d{1,3}\.){3}\d{1,3})\s*(?:\n|$)/);
-    const ips = InitialAcknowledgement._ipv4List(logs);
-    const peerIp = (quoted && quoted[1]) || (standalone && standalone[1]) || ips[0] || '';
-
-    const uptimeMatch = logs.match(/\b\d{1,2}w\d{1,2}d\d{1,2}h\d{1,2}m\d{1,2}s\b/i) ||
-        logs.match(/\b\d{1,2}d\d{1,2}h\d{1,2}m\d{1,2}s\b/i) ||
-        logs.match(/\b\d{1,2}h\d{1,2}m\d{1,2}s\b/i) ||
-        logs.match(/\b\d{2}:\d{2}:\d{2}\b/);
-    const uptime = uptimeMatch ? uptimeMatch[0] : '';
+    
+    // Extract peer IP - search complete text
+    const ips = InitialAcknowledgement._ipv4List(fullText);
+    let peerIp = '';
+    
+    // Look for IP in context of BGP output
+    const bgpContextMatch = fullText.match(/(?:peer|neighbor)\s*[=:]?\s*((?:\d{1,3}\.){3}\d{1,3})/i) ||
+                          fullText.match(/((?:\d{1,3}\.){3}\d{1,3})[^\n]*\n[^\n]*\d+\s+\d+\s+\d+\s+[\dhms]+/i);
+    if (bgpContextMatch) {
+        peerIp = bgpContextMatch[1];
+    } else if (ips.length > 0) {
+        peerIp = ips[0];
+    }
+    
+    // Extract uptime - search complete text
+    const uptimeMatch = fullText.match(/\b(\d{1,2}w)?(\d{1,2}d)?(\d{1,2}h)?(\d{1,2}m)?(\d{1,2}s)?\b/i) ||
+                        fullText.match(/uptime[^\n]*([\dhms]+)/i) ||
+                        fullText.match(/(\d{1,2}h\d{1,2}m\d{1,2}s)/i);
+    let uptime = '';
+    if (uptimeMatch) {
+        // Reconstruct uptime from captured groups
+        const parts = [];
+        if (uptimeMatch[1]) parts.push(uptimeMatch[1]);
+        if (uptimeMatch[2]) parts.push(uptimeMatch[2]);
+        if (uptimeMatch[3]) parts.push(uptimeMatch[3]);
+        if (uptimeMatch[4]) parts.push(uptimeMatch[4]);
+        if (uptimeMatch[5]) parts.push(uptimeMatch[5]);
+        if (parts.length > 0) {
+            uptime = parts.join('');
+        } else {
+            uptime = uptimeMatch[0];
+        }
+    }
 
     const lines = [];
     if (peerIp) {
@@ -107,24 +152,33 @@ InitialAcknowledgement.extractBgp = function (entry) {
         lines.push('BGP uptime observed: ' + uptime + '.');
     }
 
+    // Store complete BGP logs (plain text version)
+    const fullOutput = InitialAcknowledgement._htmlToPlainText(logs) || InitialAcknowledgement._htmlToPlainText(fullText);
+
     return {
         peerIp: peerIp,
         uptime: uptime,
-        fullOutput: logs,
+        fullOutput: fullOutput,
         text: lines.join('\n')
     };
 };
 
 InitialAcknowledgement.extractPing = function (entry) {
+    const fullText = (entry.message || '') + '\n' + (entry.logs || '') + '\n' + (entry.plain || '');
     const logs = entry.logs || '';
-    const lossMatch = logs.match(/(\d+(?:\.\d+)?)\s*%\s*packet loss/i);
-    const avgMatch = logs.match(/avg(?:erage)?\s*=\s*(\d+(?:\.\d+)?)\s*ms/i) ||
-        logs.match(/average(?: latency)?[^0-9]*(\d+(?:\.\d+)?)\s*ms/i);
-    const txMatch = logs.match(/(\d+)\s+packets transmitted/i);
-    const rxMatch = logs.match(/(\d+)\s+packets received/i);
-
+    
+    // Extract packet loss - search complete text
+    const lossMatch = fullText.match(/(\d+(?:\.\d+)?)\s*%\s*packet loss/i);
     const loss = lossMatch ? parseFloat(lossMatch[1]) : null;
+    
+    // Extract average latency - search complete text
+    const avgMatch = fullText.match(/avg(?:erage)?\s*=\s*(\d+(?:\.\d+)?)\s*ms/i) ||
+                     fullText.match(/average(?: latency)?[^0-9]*(\d+(?:\.\d+)?)\s*ms/i) ||
+                     fullText.match(/round-trip[^\n]*avg[^\n]*=\s*(\d+(?:\.\d+)?)\s*ms/i);
     const avg = avgMatch ? avgMatch[1] : '';
+    
+    const txMatch = fullText.match(/(\d+)\s+packets transmitted/i);
+    const rxMatch = fullText.match(/(\d+)\s+packets received/i);
     const received = rxMatch ? parseInt(rxMatch[1], 10) : null;
     const transmitted = txMatch ? parseInt(txMatch[1], 10) : null;
 
@@ -138,15 +192,19 @@ InitialAcknowledgement.extractPing = function (entry) {
             text = 'Ping verification to customer endpoint failed. No successful replies were received.';
         }
     } else if (loss === 0 || loss === 0.0) {
-        text = 'Ping verification to customer endpoint was successful with 0% packet loss.';
+        text = 'Ping verification to customer endpoint was successful with 0.00% packet loss.';
         if (avg) {
             text += '\nAverage latency observed: ' + avg + ' ms.';
         }
     }
 
+    // Store complete Ping logs (plain text version)
+    const fullOutput = InitialAcknowledgement._htmlToPlainText(logs) || InitialAcknowledgement._htmlToPlainText(fullText);
+
     return {
         packetLoss: loss,
         averageLatency: avg,
+        fullOutput: fullOutput,
         text: text
     };
 };

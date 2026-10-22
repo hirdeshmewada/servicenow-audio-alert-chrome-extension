@@ -63,6 +63,25 @@ InitialAcknowledgement.buildAcknowledgement = function (data) {
     blocks.push('');
     observation.forEach(function (line) { blocks.push(line); });
     blocks.push('');
+
+    // Add Logs section if diagnostic logs are available
+    const logSections = [];
+    if (InitialAcknowledgement._hasValue(data.bgpLogs)) {
+        logSections.push(data.bgpLogs.trim());
+    }
+    if (InitialAcknowledgement._hasValue(data.pingLogs)) {
+        logSections.push(data.pingLogs.trim());
+    }
+    
+    if (logSections.length > 0) {
+        blocks.push('Logs:');
+        blocks.push('');
+        logSections.forEach(function (logSection) {
+            blocks.push(logSection);
+            blocks.push('');
+        });
+    }
+
     blocks.push('Further monitoring is in progress.');
 
     return blocks.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
