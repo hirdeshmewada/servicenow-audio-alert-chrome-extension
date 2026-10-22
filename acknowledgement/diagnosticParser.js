@@ -84,10 +84,7 @@ InitialAcknowledgement.filterDiagnosticWorkNotes = function (records) {
     return (records || []).filter(function (record) {
         return record.element === 'work_notes' &&
             typeof record.value === 'string' &&
-            (record.value.indexOf(InitialAcknowledgement.DIAGNOSTIC_MARKER) !== -1 ||
-             record.value.toLowerCase().indexOf('diagnostic') !== -1 ||
-             record.value.toLowerCase().indexOf('bgp') !== -1 ||
-             record.value.toLowerCase().indexOf('ping') !== -1);
+            record.value.includes('Insights: Diagnostic Update');
     });
 };
 
