@@ -184,7 +184,7 @@ InitialAcknowledgement.fetchTableRecord = async function (origin, table, sysId) 
 InitialAcknowledgement.fetchJournal = async function (origin, caseSysId) {
     const url = origin + '/sys_journal_field.do?sysparm_query=' +
         encodeURIComponent('element_id=' + caseSysId) +
-        '&JSONv2&sysparm_display_value=true&sysparm_limit=20';
+        '&JSONv2&sysparm_display_value=true&sysparm_limit=1000';
     const data = await InitialAcknowledgement._fetchJson(url);
     return data.records || [];
 };

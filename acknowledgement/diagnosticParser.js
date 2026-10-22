@@ -82,9 +82,8 @@ InitialAcknowledgement._section = function (text, label, stopLabels) {
 
 InitialAcknowledgement.filterDiagnosticWorkNotes = function (records) {
     return (records || []).filter(function (record) {
-        return record.element === 'work_notes' &&
-            typeof record.value === 'string' &&
-            record.value.includes('Insights: Diagnostic Update');
+        return typeof record.value === 'string' &&
+            record.value.includes("Insights: Diagnostic Update");
     });
 };
 
