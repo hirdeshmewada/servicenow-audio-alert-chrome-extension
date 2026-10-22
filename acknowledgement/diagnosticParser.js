@@ -233,6 +233,7 @@ InitialAcknowledgement.extractPing = function (entry) {
     return {
         packetLoss: loss,
         averageLatency: avg,
+        fullOutput: logs,
         text: text
     };
 };
