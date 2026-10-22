@@ -82,8 +82,9 @@ InitialAcknowledgement._section = function (text, label, stopLabels) {
 
 InitialAcknowledgement.filterDiagnosticWorkNotes = function (records) {
     return (records || []).filter(function (record) {
-        return typeof record.value === 'string' &&
-            record.value.includes("Insights: Diagnostic Update");
+        return record.element === 'work_notes' &&
+            typeof record.value === 'string' &&
+            record.value.indexOf('Insights: Diagnostic Update') !== -1;
     });
 };
 
@@ -178,29 +179,37 @@ InitialAcknowledgement.parseDiagnostics = function (journalRecords) {
     const notes = InitialAcknowledgement.filterDiagnosticWorkNotes(journalRecords);
     console.log('[ACK] Total journal records:', journalRecords.length);
     console.log('[ACK] Diagnostic entries found:', notes.length);
-    console.log('[ACK] Sample diagnostic entry:', notes[0] ? notes[0].value.substring(0, 200) : 'none');
+    console.log('[ACK] Sample diagnostic entry:', notes[0] ? notes[0].value.substring(0, 300) : 'none');
 
     let bgp = { peerIp: '', uptime: '', fullOutput: '', text: '' };
     let ping = { packetLoss: null, averageLatency: '', text: '' };
 
-    notes.forEach(function (note) {
+    notes.forEach(function (note, index) {
+        console.log('[ACK] Processing note', index);
         const entry = InitialAcknowledgement.parseDiagnosticEntry(note.value || '');
-        console.log('[ACK] Parsed entry - message:', entry.message.substring(0, 100), 'logs length:', entry.logs.length);
+        console.log('[ACK] Parsed entry - message:', entry.message.substring(0, 150));
+        console.log('[ACK] Parsed entry - logs:', entry.logs.substring(0, 150));
         
-        if (InitialAcknowledgement._isInterfaceVprn(entry)) return;
+        const isVprn = InitialAcknowledgement._isInterfaceVprn(entry);
+        console.log('[ACK] Is VPRN:', isVprn);
+        if (isVprn) return;
 
-        if (!bgp.text && InitialAcknowledgement._isBgpEntry(entry)) {
-            console.log('[ACK] Found BGP entry');
+        const isBgp = InitialAcknowledgement._isBgpEntry(entry);
+        const isPing = InitialAcknowledgement._isPingEntry(entry);
+        console.log('[ACK] Is BGP:', isBgp, 'Is Ping:', isPing);
+
+        if (!bgp.text && isBgp) {
+            console.log('[ACK] Found BGP entry, extracting...');
             bgp = InitialAcknowledgement.extractBgp(entry);
         }
-        if (!ping.text && InitialAcknowledgement._isPingEntry(entry)) {
-            console.log('[ACK] Found Ping entry');
+        if (!ping.text && isPing) {
+            console.log('[ACK] Found Ping entry, extracting...');
             ping = InitialAcknowledgement.extractPing(entry);
         }
     });
 
-    console.log('[ACK] BGP extracted:', bgp);
-    console.log('[ACK] Ping extracted:', ping);
+    console.log('[ACK] Final BGP extracted:', bgp);
+    console.log('[ACK] Final Ping extracted:', ping);
 
     return { bgp: bgp, ping: ping };
 };
