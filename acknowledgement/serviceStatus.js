@@ -105,56 +105,6 @@ ServiceStatus._fetchText = async function (url) {
     return response.text();
 };
 
-ServiceStatus._injectBridgeScript = async function (tabId) {
-    console.log('[SERVICE STATUS] Injecting bridge script into tab:', tabId);
-    
-    // Read the bridge script
-    const bridgeScriptContent = await ServiceStatus._readBridgeScript();
-    
-    // Inject the script into the page
-    await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: ServiceStatus._executeBridgeScript,
-        args: [bridgeScriptContent]
-    });
-    
-    console.log('[SERVICE STATUS] Bridge script injected');
-};
-
-ServiceStatus._readBridgeScript = async function () {
-    // Read the bridge script file using fetch from extension
-    const url = chrome.runtime.getURL('acknowledgement/serviceNowBridge.js');
-    const response = await fetch(url);
-    return await response.text();
-};
-
-ServiceStatus._executeBridgeScript = function (scriptContent) {
-    // Execute the bridge script in page context
-    try {
-        eval(scriptContent);
-    } catch (error) {
-        console.error('[SERVICE STATUS BRIDGE] Script execution error:', error);
-    }
-};
-
-ServiceStatus._waitForBridgeReady = function (timeout = 5000) {
-    return new Promise((resolve, reject) => {
-        const listener = function(request, sender) {
-            if (request && request.type === 'SERVICE_STATUS_BRIDGE_READY') {
-                chrome.runtime.onMessage.removeListener(listener);
-                resolve();
-            }
-        };
-        
-        chrome.runtime.onMessage.addListener(listener);
-        
-        setTimeout(() => {
-            chrome.runtime.onMessage.removeListener(listener);
-            reject(new Error('Bridge script not ready within timeout'));
-        }, timeout);
-    });
-};
-
 ServiceStatus.triggerFLT = async function (origin, caseSysId) {
     console.log('[SERVICE STATUS] Triggering FLT for case:', caseSysId);
     
@@ -164,39 +114,29 @@ ServiceStatus.triggerFLT = async function (origin, caseSysId) {
         throw new Error('No active tab found');
     }
     
-    // Inject bridge script
-    await ServiceStatus._injectBridgeScript(tab.id);
-    
-    // Wait for bridge to be ready
-    await ServiceStatus._waitForBridgeReady();
-    
-    // Send trigger request to bridge via content script
+    // Send trigger request to content script running in ServiceNow page
     return new Promise((resolve, reject) => {
-        const listener = function(request, sender) {
-            if (request && request.type === 'FLT_TRIGGER_RESPONSE') {
-                chrome.runtime.onMessage.removeListener(listener);
-                
-                if (request.success) {
-                    console.log('[SERVICE STATUS] FLT trigger successful:', request.data);
-                    resolve(request.data);
-                } else {
-                    console.error('[SERVICE STATUS] FLT trigger failed:', request.error);
-                    reject(new Error(request.error || 'FLT trigger failed'));
-                }
-            }
-        };
-        
-        chrome.runtime.onMessage.addListener(listener);
-        
-        // Send trigger request to the content script in the tab
         chrome.tabs.sendMessage(tab.id, {
             type: 'TRIGGER_FLT',
             sys_id: caseSysId
+        }, function(response) {
+            if (chrome.runtime.lastError) {
+                console.error('[SERVICE STATUS] Error sending message to tab:', chrome.runtime.lastError);
+                reject(new Error('Could not communicate with ServiceNow page. Make sure you have a ServiceNow case tab open.'));
+                return;
+            }
+            
+            if (response && response.success) {
+                console.log('[SERVICE STATUS] FLT trigger successful:', response.data);
+                resolve(response.data);
+            } else {
+                console.error('[SERVICE STATUS] FLT trigger failed:', response.error);
+                reject(new Error(response.error || 'FLT trigger failed'));
+            }
         });
         
         // Timeout after 30 seconds
         setTimeout(() => {
-            chrome.runtime.onMessage.removeListener(listener);
             reject(new Error('FLT trigger timeout'));
         }, 30000);
     });

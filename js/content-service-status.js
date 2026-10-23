@@ -1,36 +1,40 @@
-// Content script for Service Status - forwards messages between extension and injected bridge script
+// Content script for Service Status - runs in ServiceNow page context
 console.log('[SERVICE STATUS CONTENT] Content script loaded');
 
 // Listen for messages from extension popup
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     if (request.type === 'TRIGGER_FLT') {
-        console.log('[SERVICE STATUS CONTENT] Forwarding FLT trigger to page');
+        console.log('[SERVICE STATUS CONTENT] Received FLT trigger request');
+        console.log('[SERVICE STATUS CONTENT] Case sys_id:', request.sys_id);
         
-        // Forward to injected bridge script via window.postMessage
-        window.postMessage({
-            type: 'TRIGGER_FLT',
-            sys_id: request.sys_id
-        }, '*');
-        
-        return true; // Keep message channel open for async response
-    }
-});
+        // Execute FLT trigger using GlideAjax directly in ServiceNow context
+        try {
+            var ga = new GlideAjax('global.CSNPH2_FLT_Trigger');
+            ga.addParam('sysparm_name', 'fltTrigger');
+            ga.addParam('sysparm_id', request.sys_id);
 
-// Listen for messages from injected bridge script
-window.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'FLT_TRIGGER_RESPONSE') {
-        console.log('[SERVICE STATUS CONTENT] Received FLT response from bridge');
-        
-        // Forward back to extension
-        chrome.runtime.sendMessage(event.data);
-    }
-    
-    if (event.data && event.data.type === 'SERVICE_STATUS_BRIDGE_READY') {
-        console.log('[SERVICE STATUS CONTENT] Bridge is ready');
-        
-        // Forward to extension
-        chrome.runtime.sendMessage({
-            type: 'SERVICE_STATUS_BRIDGE_READY'
-        });
+            ga.getXML(function(response) {
+                console.log('[SERVICE STATUS CONTENT] FLT trigger response received');
+                
+                var answer = null;
+                if (response && response.responseXML && response.responseXML.documentElement) {
+                    answer = response.responseXML.documentElement.getAttribute('answer');
+                }
+
+                sendResponse({
+                    success: true,
+                    data: answer
+                });
+            });
+            
+            return true; // Keep message channel open for async response
+        } catch (error) {
+            console.error('[SERVICE STATUS CONTENT] FLT trigger error:', error);
+            sendResponse({
+                success: false,
+                error: error.message
+            });
+            return true;
+        }
     }
 });
