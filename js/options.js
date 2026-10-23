@@ -79,6 +79,9 @@ function setupEventListeners() {
     const generateInitialAckBtn = document.getElementById('generateInitialAckBtn');
     if (generateInitialAckBtn) generateInitialAckBtn.addEventListener('click', generateInitialAcknowledgement);
     
+    const generateServiceStatusBtn = document.getElementById('generateServiceStatusBtn');
+    if (generateServiceStatusBtn) generateServiceStatusBtn.addEventListener('click', generateServiceStatus);
+    
     // Input field listeners for auto-save
     const autoSaveFields = ['idprimaryq', 'idrooturl', 'idsecondaryq', 'primaryNotificationText', 'secondaryNotificationText'];
     autoSaveFields.forEach(fieldId => {
@@ -166,6 +169,25 @@ async function generateInitialAcknowledgement() {
     } catch (error) {
         console.error('[ACK] Generation failed:', error);
         showErrorMessage(error && error.message ? error.message : 'Could not generate acknowledgement');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function generateServiceStatus() {
+    const button = document.getElementById('generateServiceStatusBtn');
+    if (button) button.disabled = true;
+    try {
+        // Override the status message function in serviceStatus.js
+        ServiceStatus.showStatusMessage = function(message) {
+            showSuccessMessage(message);
+        };
+        
+        await ServiceStatus.generate();
+        showSuccessMessage('✅ Service status copied to clipboard');
+    } catch (error) {
+        console.error('[SERVICE STATUS] Generation failed:', error);
+        showErrorMessage(error && error.message ? error.message : 'Could not generate service status');
     } finally {
         if (button) button.disabled = false;
     }
