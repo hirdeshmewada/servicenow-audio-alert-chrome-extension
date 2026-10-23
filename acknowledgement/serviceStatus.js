@@ -105,36 +105,101 @@ ServiceStatus._fetchText = async function (url) {
     return response.text();
 };
 
+ServiceStatus._injectBridgeScript = async function (tabId) {
+    console.log('[SERVICE STATUS] Injecting bridge script into tab:', tabId);
+    
+    // Read the bridge script
+    const bridgeScriptContent = await ServiceStatus._readBridgeScript();
+    
+    // Inject the script into the page
+    await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: ServiceStatus._executeBridgeScript,
+        args: [bridgeScriptContent]
+    });
+    
+    console.log('[SERVICE STATUS] Bridge script injected');
+};
+
+ServiceStatus._readBridgeScript = async function () {
+    // Read the bridge script file using fetch from extension
+    const url = chrome.runtime.getURL('acknowledgement/serviceNowBridge.js');
+    const response = await fetch(url);
+    return await response.text();
+};
+
+ServiceStatus._executeBridgeScript = function (scriptContent) {
+    // Execute the bridge script in page context
+    try {
+        eval(scriptContent);
+    } catch (error) {
+        console.error('[SERVICE STATUS BRIDGE] Script execution error:', error);
+    }
+};
+
+ServiceStatus._waitForBridgeReady = function (timeout = 5000) {
+    return new Promise((resolve, reject) => {
+        const listener = function(event) {
+            if (event.data && event.data.type === 'SERVICE_STATUS_BRIDGE_READY') {
+                window.removeEventListener('message', listener);
+                resolve();
+            }
+        };
+        
+        window.addEventListener('message', listener);
+        
+        setTimeout(() => {
+            window.removeEventListener('message', listener);
+            reject(new Error('Bridge script not ready within timeout'));
+        }, timeout);
+    });
+};
+
 ServiceStatus.triggerFLT = async function (origin, caseSysId) {
     console.log('[SERVICE STATUS] Triggering FLT for case:', caseSysId);
     
-    const url = origin + '/xmlhttp.do';
-    const params = new URLSearchParams();
-    params.append('sysparm_processor', 'global.CSNPH2_FLT_Trigger');
-    params.append('sysparm_scope', 'sn_customerservice');
-    params.append('sysparm_want_session_messages', 'true');
-    params.append('sysparm_name', 'fltTrigger');
-    params.append('sysparm_id', caseSysId);
-    params.append('ni.nolog.x_referer', 'ignore');
-    // Use a simple x_referer - the complex one in the payload is for list view context
-    params.append('x_referer', 'sn_customerservice_case.do?sys_id=' + caseSysId);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: params
-    });
-
-    if (!response.ok) {
-        throw new Error('FLT trigger failed: HTTP ' + response.status);
+    // Get active tab
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+        throw new Error('No active tab found');
     }
-
-    const text = await response.text();
-    console.log('[SERVICE STATUS] FLT trigger response:', text);
-    return text;
+    
+    // Inject bridge script
+    await ServiceStatus._injectBridgeScript(tab.id);
+    
+    // Wait for bridge to be ready
+    await ServiceStatus._waitForBridgeReady();
+    
+    // Send trigger request to bridge
+    return new Promise((resolve, reject) => {
+        const listener = function(event) {
+            if (event.data && event.data.type === 'FLT_TRIGGER_RESPONSE') {
+                window.removeEventListener('message', listener);
+                
+                if (event.data.success) {
+                    console.log('[SERVICE STATUS] FLT trigger successful:', event.data.data);
+                    resolve(event.data.data);
+                } else {
+                    console.error('[SERVICE STATUS] FLT trigger failed:', event.data.error);
+                    reject(new Error(event.data.error || 'FLT trigger failed'));
+                }
+            }
+        };
+        
+        window.addEventListener('message', listener);
+        
+        // Send trigger request
+        window.postMessage({
+            type: 'TRIGGER_FLT',
+            sys_id: caseSysId
+        }, '*');
+        
+        // Timeout after 30 seconds
+        setTimeout(() => {
+            window.removeEventListener('message', listener);
+            reject(new Error('FLT trigger timeout'));
+        }, 30000);
+    });
 };
 
 ServiceStatus.pollListHistory = async function (origin, caseSysId, maxAttempts = 15, intervalMs = 2000) {

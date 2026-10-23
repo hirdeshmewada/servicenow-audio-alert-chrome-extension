@@ -7,11 +7,18 @@ Added a new "Service Status" button to the Chrome extension that silently trigge
 
 ### 1. New Module: `acknowledgement/serviceStatus.js`
 - Reuses existing case context detection from Initial Acknowledgement
-- Triggers FLT via `xmlhttp.do` POST request (silent, no UI interaction)
+- **Injects bridge script into ServiceNow page context** to use GlideAjax
+- Triggers FLT via injected script (no direct API calls)
 - Polls `list_history.do` API for new entries
 - Extracts "Insights: Diagnostic Update" entries
 - Parses Ping and BGP logs based on message content
 - Formats output and copies to clipboard
+
+### 2. Bridge Script: `acknowledgement/serviceNowBridge.js`
+- Injected into ServiceNow page context
+- Uses `GlideAjax('global.CSNPH2_FLT_Trigger')` to trigger FLT
+- Communicates with extension via `window.postMessage`
+- Maintains ServiceNow session context and authentication
 
 ### 2. Key Functions
 
@@ -21,8 +28,10 @@ Added a new "Service Status" button to the Chrome extension that silently trigge
 - Falls back to chrome.storage.sync for root URL if needed
 
 #### `ServiceStatus.triggerFLT(origin, caseSysId)`
-- POST to `xmlhttp.do` with FLT trigger parameters
-- Uses same payload as existing FLT Re-Trigger button
+- Injects bridge script into active ServiceNow tab
+- Sends message to bridge script via `window.postMessage`
+- Bridge script uses `GlideAjax('global.CSNPH2_FLT_Trigger')` in page context
+- Waits for response from bridge script
 - Silent execution - no UI clicks or page refreshes
 
 #### `ServiceStatus.pollListHistory(origin, caseSysId)`
@@ -90,7 +99,15 @@ User clicks "Service Status"
           ↓
 Get current tab sys_id
           ↓
-POST xmlhttp.do (FLT Trigger)
+Inject bridge script into ServiceNow page
+          ↓
+postMessage → Bridge Script
+          ↓
+Bridge Script: GlideAjax('global.CSNPH2_FLT_Trigger')
+          ↓
+FLT executes in ServiceNow backend
+          ↓
+postMessage ← Response to Extension
           ↓
 Wait 5 seconds
           ↓
@@ -120,20 +137,7 @@ Copy to clipboard
 
 ## API Endpoints Used
 
-### 1. FLT Trigger
-```
-POST https://{instance}.service-now.com/xmlhttp.do
-Body:
-  sysparm_processor=global.CSNPH2_FLT_Trigger
-  sysparm_scope=sn_customerservice
-  sysparm_want_session_messages=true
-  sysparm_name=fltTrigger
-  sysparm_id={case_sys_id}
-  ni.nolog.x_referer=ignore
-  x_referer={current_case_url}
-```
-
-### 2. List History Poll
+### List History Poll
 ```
 GET https://{instance}.service-now.com/list_history.do?
   sysparm_type=list_history
@@ -145,6 +149,17 @@ GET https://{instance}.service-now.com/list_history.do?
   &include_attachments=
   &sys_id={case_sys_id}
 ```
+
+### FLT Trigger (via Bridge Script)
+The FLT trigger is executed via injected bridge script using ServiceNow's GlideAjax:
+```javascript
+var ga = new GlideAjax('global.CSNPH2_FLT_Trigger');
+ga.addParam('sysparm_name', 'fltTrigger');
+ga.addParam('sysparm_id', caseSysId);
+ga.getXML(callback);
+```
+
+This runs in ServiceNow page context and uses existing authentication.
 
 ## Log Detection Logic
 
@@ -190,17 +205,43 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 
 1. **No active tab**: Error message "No active tab found"
 2. **No ServiceNow tab**: Error message "Open a ServiceNow case tab"
-3. **FLT trigger failure**: Error with HTTP status
-4. **No diagnostic entries**: Error "No Insights Diagnostic Update found"
-5. **No logs extracted**: Warning but continues
-6. **Clipboard failure**: Error "Failed to copy to clipboard"
+3. **Bridge script injection failure**: Error "Could not inject bridge script"
+4. **Bridge script timeout**: Error "Bridge script not ready within timeout"
+5. **FLT trigger failure**: Error from GlideAjax response
+6. **No diagnostic entries**: Error "No Insights Diagnostic Update found"
+7. **No logs extracted**: Warning but continues
+8. **Clipboard failure**: Error "Failed to copy to clipboard"
+
+## Why GlideAjax Bridge Approach?
+
+### Problem with Direct xmlhttp.do Calls
+- Chrome extensions run in `chrome-extension://` origin
+- ServiceNow xmlhttp.do requires authenticated session context
+- Direct fetch/XHR from extension results in **401 Unauthorized**
+- Missing ServiceNow session cookies and CSRF tokens
+- GlideAjax is not available in extension context
+
+### Solution: Injected Bridge Script
+- Bridge script runs in ServiceNow page context (`https://tatain.service-now.com`)
+- Has access to ServiceNow session cookies and authentication
+- Can use `GlideAjax()` API natively
+- Communicates with extension via `window.postMessage`
+- Maintains same authentication as existing FLT Re-Trigger button
+
+### Architecture Benefits
+✅ Uses existing ServiceNow session (no new auth needed)
+✅ Same mechanism as FLT Re-Trigger button
+✅ No 401 authentication errors
+✅ Maintains ServiceNow security context
+✅ Works with GlideAjax and all ServiceNow APIs
 
 ## Testing Checklist
 
 - [ ] Button appears in options popup
 - [ ] Button is disabled during execution
 - [ ] Status messages show during execution
-- [ ] FLT trigger executes silently
+- [ ] Bridge script injects successfully
+- [ ] FLT trigger executes via GlideAjax (no 401 error)
 - [ ] Polling waits for diagnostic entries
 - [ ] Ping logs extracted correctly
 - [ ] BGP logs extracted correctly
@@ -221,8 +262,9 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 ## Files Modified
 
 1. `acknowledgement/serviceStatus.js` - NEW
-2. `options.html` - Added button and script reference
-3. `js/options.js` - Added event listener and handler function
+2. `acknowledgement/serviceNowBridge.js` - NEW (bridge script for GlideAjax)
+3. `options.html` - Added button and script reference
+4. `js/options.js` - Added event listener and handler function
 
 ## Files Unchanged
 
@@ -231,7 +273,7 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 - `acknowledgement/diagnosticParser.js` - Diagnostic parsing
 - `acknowledgement/clipboard.js` - Clipboard utilities
 - `js/background.js` - Service worker
-- `manifest.json` - Extension manifest
+- `manifest.json` - Extension manifest (no changes needed)
 
 ## API Response Structure
 
