@@ -114,32 +114,131 @@ ServiceStatus.triggerFLT = async function (origin, caseSysId) {
         throw new Error('No active tab found');
     }
     
-    // Send trigger request to content script running in ServiceNow page
-    return new Promise((resolve, reject) => {
-        chrome.tabs.sendMessage(tab.id, {
-            type: 'TRIGGER_FLT',
-            sys_id: caseSysId
-        }, function(response) {
-            if (chrome.runtime.lastError) {
-                console.error('[SERVICE STATUS] Error sending message to tab:', chrome.runtime.lastError);
-                reject(new Error('Could not communicate with ServiceNow page. Make sure you have a ServiceNow case tab open.'));
-                return;
+    // Inject and execute complete FLT trigger + diagnostic extraction in ServiceNow page context
+    const injected = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: async function(caseId, origin) {
+            console.log('[INJECTED SCRIPT] Starting FLT trigger for case:', caseId);
+            console.log('[INJECTED SCRIPT] Origin:', origin);
+            
+            // Check if GlideAjax is available
+            if (typeof GlideAjax === 'undefined') {
+                return {
+                    success: false,
+                    error: 'GlideAjax not available. Please refresh the ServiceNow page.'
+                };
             }
             
-            if (response && response.success) {
-                console.log('[SERVICE STATUS] FLT trigger successful:', response.data);
-                resolve(response.data);
-            } else {
-                console.error('[SERVICE STATUS] FLT trigger failed:', response.error);
-                reject(new Error(response.error || 'FLT trigger failed'));
-            }
-        });
-        
-        // Timeout after 30 seconds
-        setTimeout(() => {
-            reject(new Error('FLT trigger timeout'));
-        }, 30000);
+            // Step 1: Trigger FLT
+            console.log('[INJECTED SCRIPT] Triggering FLT via GlideAjax');
+            await new Promise((resolve, reject) => {
+                var ga = new GlideAjax('global.CSNPH2_FLT_Trigger');
+                ga.addParam('sysparm_name', 'fltTrigger');
+                ga.addParam('sysparm_id', caseId);
+
+                ga.getXML(function(response) {
+                    console.log('[INJECTED SCRIPT] FLT trigger response received');
+                    resolve();
+                });
+            });
+            
+            // Step 2: Wait for FLT to complete (10 seconds)
+            console.log('[INJECTED SCRIPT] Waiting 10 seconds for FLT to complete...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            
+            // Step 3: Fetch latest journal entries to find Diagnostic Update
+            console.log('[INJECTED SCRIPT] Fetching latest journal entries');
+            const journalUrl = origin + '/sys_journal_field.do?sysparm_query=' +
+                encodeURIComponent('element_id=' + caseId) +
+                '&JSONv2&sysparm_display_value=true&sysparm_limit=20';
+            
+            const journalResponse = await fetch(journalUrl, {
+                credentials: 'include'
+            });
+            const journalData = await journalResponse.json();
+            const journalEntries = journalData.records || [];
+            
+            console.log('[INJECTED SCRIPT] Found', journalEntries.length, 'journal entries');
+            
+            // Step 4: Find Insights Diagnostic Update entries
+            const diagnosticLogs = [];
+            
+            journalEntries.forEach(entry => {
+                const value = entry.value || '';
+                
+                // Check for Insights: Diagnostic Update
+                if (value.includes('Insights: Diagnostic Update')) {
+                    console.log('[INJECTED SCRIPT] Found Diagnostic Update entry');
+                    
+                    // Extract type based on message
+                    const type = value.toLowerCase().includes('ping') ? 'PING' : 
+                               value.toLowerCase().includes('bgp') ? 'BGP' : 'UNKNOWN';
+                    
+                    // Extract raw logs (everything after Message/Logs structure)
+                    let rawLog = value;
+                    
+                    // Remove common prefixes
+                    rawLog = rawLog.replace(/FLT ID:\s*[\w\d]+/gi, '');
+                    rawLog = rawLog.replace(/Insights:\s*Diagnostic Update/gi, '');
+                    rawLog = rawLog.replace(/<[^>]+>/g, '\n');
+                    rawLog = rawLog.replace(/&nbsp;/g, ' ');
+                    rawLog = rawLog.replace(/&quot;/g, '"');
+                    rawLog = rawLog.replace(/&#34;/g, '"');
+                    rawLog = rawLog.replace(/&amp;/g, '&');
+                    rawLog = rawLog.replace(/Message\s*:[^\n]*/gi, '');
+                    rawLog = rawLog.replace(/Logs\s*:[^\n]*/gi, '');
+                    rawLog = rawLog.replace(/by\s+INSIGHTS/gi, '');
+                    rawLog = rawLog.replace(/B:#$/gm, '');
+                    
+                    // Clean up empty lines
+                    rawLog = rawLog.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.length > 0)
+                        .join('\n');
+                    
+                    // Remove duplicate commands
+                    const lines = rawLog.split('\n');
+                    const uniqueLines = [];
+                    const seenLines = new Set();
+                    
+                    lines.forEach(line => {
+                        if (!seenLines.has(line)) {
+                            seenLines.add(line);
+                            uniqueLines.push(line);
+                        }
+                    });
+                    
+                    rawLog = uniqueLines.join('\n');
+                    
+                    if (type !== 'UNKNOWN' && rawLog.length > 0) {
+                        diagnosticLogs.push({
+                            type: type,
+                            raw: rawLog
+                        });
+                    }
+                }
+            });
+            
+            console.log('[INJECTED SCRIPT] Extracted', diagnosticLogs.length, 'diagnostic logs');
+            
+            return {
+                success: true,
+                logs: diagnosticLogs
+            };
+        },
+        args: [caseSysId, origin]
     });
+    
+    const result = injected[0].result;
+    
+    if (result.success) {
+        console.log('[SERVICE STATUS] FLT and diagnostic extraction successful');
+        console.log('[SERVICE STATUS] Found', result.logs.length, 'diagnostic logs');
+        return result.logs;
+    } else {
+        console.error('[SERVICE STATUS] FLT trigger failed:', result.error);
+        throw new Error(result.error || 'FLT trigger failed');
+    }
 };
 
 ServiceStatus.pollListHistory = async function (origin, caseSysId, maxAttempts = 15, intervalMs = 2000) {
@@ -449,6 +548,44 @@ ServiceStatus.formatOutput = function (diagnostics) {
     return lines.join('\n');
 };
 
+ServiceStatus.formatOutputFromLogs = function (logs) {
+    const lines = [];
+    
+    lines.push('===== SERVICE STATUS =====');
+    lines.push('');
+    
+    let pingLog = null;
+    let bgpLog = null;
+    
+    logs.forEach(log => {
+        if (log.type === 'PING') {
+            pingLog = log.raw;
+        } else if (log.type === 'BGP') {
+            bgpLog = log.raw;
+        }
+    });
+    
+    if (pingLog) {
+        lines.push('PING STATUS');
+        lines.push('-----------');
+        lines.push(pingLog);
+        lines.push('');
+    }
+    
+    if (bgpLog) {
+        lines.push('BGP STATUS');
+        lines.push('----------');
+        lines.push(bgpLog);
+        lines.push('');
+    }
+    
+    if (!pingLog && !bgpLog) {
+        lines.push('No diagnostic logs found.');
+    }
+    
+    return lines.join('\n');
+};
+
 ServiceStatus.copyText = async function (text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -467,44 +604,21 @@ ServiceStatus.generate = async function () {
     console.log('[SERVICE STATUS] Case sys_id:', context.sysId);
     console.log('[SERVICE STATUS] Origin:', context.origin);
     
-    // Step 2: Trigger FLT
+    // Step 2: Trigger FLT and extract diagnostics (all in ServiceNow page context)
     if (ServiceStatus.showStatusMessage) {
-        ServiceStatus.showStatusMessage('Triggering FLT diagnostic...');
+        ServiceStatus.showStatusMessage('Triggering FLT and fetching diagnostics...');
     }
-    await ServiceStatus.triggerFLT(context.origin, context.sysId);
+    const diagnosticLogs = await ServiceStatus.triggerFLT(context.origin, context.sysId);
     
-    // Step 3: Wait for FLT to complete
-    if (ServiceStatus.showStatusMessage) {
-        ServiceStatus.showStatusMessage('Waiting for diagnostic to complete...');
-    }
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // Step 4: Poll for new entries
-    if (ServiceStatus.showStatusMessage) {
-        ServiceStatus.showStatusMessage('Fetching diagnostic logs...');
-    }
-    const entries = await ServiceStatus.pollListHistory(context.origin, context.sysId);
-    
-    // Step 5: Find Diagnostic Update entries (may be multiple)
-    const diagnosticEntries = ServiceStatus.findDiagnosticUpdate(entries);
-    if (!diagnosticEntries || diagnosticEntries.length === 0) {
-        throw new Error('No Insights Diagnostic Update found in recent entries.');
+    if (!diagnosticLogs || diagnosticLogs.length === 0) {
+        throw new Error('No diagnostic logs found. Please try again.');
     }
     
-    console.log('[SERVICE STATUS] Found', diagnosticEntries.length, 'diagnostic entries');
-    
-    // Step 6: Extract diagnostics from all entries
-    const diagnostics = ServiceStatus.extractDiagnostics(diagnosticEntries);
-    
-    if (!diagnostics.pingLogs && !diagnostics.bgpLogs) {
-        console.warn('[SERVICE STATUS] No ping or BGP logs extracted');
-    }
-    
-    // Step 7: Format output
-    const output = ServiceStatus.formatOutput(diagnostics);
+    // Step 3: Format output from diagnostic logs
+    const output = ServiceStatus.formatOutputFromLogs(diagnosticLogs);
     console.log('[SERVICE STATUS] Final output:\n', output);
     
-    // Step 8: Copy to clipboard
+    // Step 4: Copy to clipboard
     await ServiceStatus.copyText(output);
     
     return output;

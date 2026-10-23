@@ -11,14 +11,6 @@
     "type": "module"
   },
   
-  "content_scripts": [
-    {
-      "matches": ["https://*.service-now.com/*"],
-      "js": ["js/content-service-status.js"],
-      "run_at": "document_idle"
-    }
-  ],
-  
     "browser_specific_settings": {
         "gecko": {
             "id": "42d48c97-50c6-4bca-a0bc-bada6fd0343a.sekarpdkt@hotmail.com",
@@ -45,7 +37,8 @@
 	"storage",
 	"offscreen",
 	"clipboardWrite",
-	"scripting"
+	"scripting",
+	"activeTab"
   ],
   
   "host_permissions": [

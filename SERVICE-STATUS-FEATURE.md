@@ -7,18 +7,25 @@ Added a new "Service Status" button to the Chrome extension that silently trigge
 
 ### 1. New Module: `acknowledgement/serviceStatus.js`
 - Reuses existing case context detection from Initial Acknowledgement
-- Sends FLT trigger request to content script
-- Polls `list_history.do` API for new entries
-- Extracts "Insights: Diagnostic Update" entries
-- Parses Ping and BGP logs based on message content
+- Injects complete FLT trigger + diagnostic extraction script into ServiceNow page
+- All ServiceNow API calls (GlideAjax, journal fetch) run in ServiceNow page context
+- Extracts "Insights: Diagnostic Update" entries from journal
 - Formats output and copies to clipboard
 
-### 2. Content Script: `js/content-service-status.js`
-- Automatically loaded on ServiceNow pages via manifest
-- Runs in ServiceNow page context (has access to GlideAjax)
-- Uses `GlideAjax('global.CSNPH2_FLT_Trigger')` directly to trigger FLT
-- Communicates with extension via `chrome.runtime.sendMessage`
-- No bridge script needed - uses native ServiceNow context
+### Key Feature: Complete In-Page Execution
+The entire FLT trigger and diagnostic extraction happens inside the ServiceNow page context:
+- GlideAjax call to trigger FLT
+- Wait for FLT completion (10 seconds)
+- Fetch latest journal entries
+- Find "Insights: Diagnostic Update" entries
+- Extract raw Ping and BGP logs
+- Return structured data to extension
+
+This ensures:
+- ✅ ServiceNow session cookies are available
+- ✅ GlideAjax API is accessible
+- ✅ No 401 authentication errors
+- ✅ No cross-origin issues
 
 ### 2. Key Functions
 
@@ -99,23 +106,23 @@ User clicks "Service Status"
           ↓
 Get current tab sys_id
           ↓
-chrome.tabs.sendMessage → Content Script
+chrome.scripting.executeScript()
           ↓
-Content Script: GlideAjax('global.CSNPH2_FLT_Trigger')
+Injected Script in ServiceNow Page
+          ↓
+GlideAjax('global.CSNPH2_FLT_Trigger')
           ↓
 FLT executes in ServiceNow backend
           ↓
-chrome.runtime.sendMessage ← Response to Extension
+Wait 10 seconds
           ↓
-Wait 5 seconds
-          ↓
-Poll list_history.do (15 attempts, 2s interval)
-          ↓
-Parse entries (JSON or HTML)
+Fetch journal entries (in ServiceNow context)
           ↓
 Find "Insights: Diagnostic Update"
           ↓
-Extract Ping/BGP logs based on message
+Extract raw Ping and BGP logs
+          ↓
+Return logs to Extension
           ↓
 Format output
           ↓
@@ -203,11 +210,10 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 
 1. **No active tab**: Error message "No active tab found"
 2. **No ServiceNow tab**: Error message "Open a ServiceNow case tab"
-3. **Content script communication failure**: Error "Could not communicate with ServiceNow page"
+3. **GlideAjax not available**: Error "GlideAjax not available. Please refresh the ServiceNow page"
 4. **FLT trigger failure**: Error from GlideAjax response
-5. **No diagnostic entries**: Error "No Insights Diagnostic Update found"
-6. **No logs extracted**: Warning but continues
-7. **Clipboard failure**: Error "Failed to copy to clipboard"
+5. **No diagnostic logs**: Error "No diagnostic logs found. Please try again"
+6. **Clipboard failure**: Error "Failed to copy to clipboard"
 
 ## Why Content Script Approach?
 
@@ -268,10 +274,9 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 ## Files Modified
 
 1. `acknowledgement/serviceStatus.js` - NEW
-2. `js/content-service-status.js` - NEW (content script with GlideAjax)
-3. `options.html` - Added button and script reference
-4. `js/options.js` - Added event listener and handler function
-5. `manifest.json` - Added content script registration
+2. `options.html` - Added button and script reference
+3. `js/options.js` - Added event listener and handler function
+4. `manifest.json` - Added `activeTab` permission
 
 ## Files Unchanged
 
