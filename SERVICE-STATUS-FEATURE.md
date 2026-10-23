@@ -17,8 +17,14 @@ Added a new "Service Status" button to the Chrome extension that silently trigge
 ### 2. Bridge Script: `acknowledgement/serviceNowBridge.js`
 - Injected into ServiceNow page context
 - Uses `GlideAjax('global.CSNPH2_FLT_Trigger')` to trigger FLT
-- Communicates with extension via `window.postMessage`
+- Communicates with content script via `window.postMessage`
 - Maintains ServiceNow session context and authentication
+
+### 3. Content Script: `js/content-service-status.js`
+- Automatically loaded on ServiceNow pages
+- Forwards messages between extension popup and injected bridge script
+- Uses `chrome.runtime.sendMessage` for extension ↔ content script communication
+- Uses `window.postMessage` for content script ↔ bridge script communication
 
 ### 2. Key Functions
 
@@ -101,13 +107,17 @@ Get current tab sys_id
           ↓
 Inject bridge script into ServiceNow page
           ↓
-postMessage → Bridge Script
+chrome.tabs.sendMessage → Content Script
+          ↓
+window.postMessage → Bridge Script
           ↓
 Bridge Script: GlideAjax('global.CSNPH2_FLT_Trigger')
           ↓
 FLT executes in ServiceNow backend
           ↓
-postMessage ← Response to Extension
+window.postMessage ← Response to Content Script
+          ↓
+chrome.runtime.sendMessage ← Response to Extension
           ↓
 Wait 5 seconds
           ↓
@@ -212,20 +222,40 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 7. **No logs extracted**: Warning but continues
 8. **Clipboard failure**: Error "Failed to copy to clipboard"
 
-## Why GlideAjax Bridge Approach?
+## Why Three-Layer Communication Architecture?
 
-### Problem with Direct xmlhttp.do Calls
+### Problem 1: Direct xmlhttp.do from Extension (401 Error)
 - Chrome extensions run in `chrome-extension://` origin
 - ServiceNow xmlhttp.do requires authenticated session context
 - Direct fetch/XHR from extension results in **401 Unauthorized**
 - Missing ServiceNow session cookies and CSRF tokens
 - GlideAjax is not available in extension context
 
-### Solution: Injected Bridge Script
-- Bridge script runs in ServiceNow page context (`https://tatain.service-now.com`)
+### Problem 2: window.postMessage Between Extension and Page
+- Extension popup runs in `chrome-extension://` origin
+- Injected script runs in `https://tatain.service-now.com` origin
+- `window.postMessage` between different origins has security restrictions
+- Cannot reliably send messages directly between extension and injected script
+
+### Solution: Three-Layer Architecture
+
+#### Layer 1: Extension Popup (chrome-extension://)
+- Runs in extension context
+- Uses `chrome.tabs.sendMessage()` to communicate with content script
+- Can access chrome extension APIs
+
+#### Layer 2: Content Script (https://tatain.service-now.com)
+- Automatically loaded on ServiceNow pages
+- Runs in ServiceNow page context
+- Uses `chrome.runtime.sendMessage()` to communicate with extension
+- Uses `window.postMessage()` to communicate with injected bridge script
+- Acts as message forwarder/bridge
+
+#### Layer 3: Injected Bridge Script (https://tatain.service-now.com)
+- Dynamically injected into ServiceNow page
 - Has access to ServiceNow session cookies and authentication
 - Can use `GlideAjax()` API natively
-- Communicates with extension via `window.postMessage`
+- Uses `window.postMessage()` to communicate with content script
 - Maintains same authentication as existing FLT Re-Trigger button
 
 ### Architecture Benefits
@@ -234,6 +264,7 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 ✅ No 401 authentication errors
 ✅ Maintains ServiceNow security context
 ✅ Works with GlideAjax and all ServiceNow APIs
+✅ Proper cross-origin communication via content script
 
 ## Testing Checklist
 
@@ -263,8 +294,10 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 
 1. `acknowledgement/serviceStatus.js` - NEW
 2. `acknowledgement/serviceNowBridge.js` - NEW (bridge script for GlideAjax)
-3. `options.html` - Added button and script reference
-4. `js/options.js` - Added event listener and handler function
+3. `js/content-service-status.js` - NEW (content script for message forwarding)
+4. `options.html` - Added button and script reference
+5. `js/options.js` - Added event listener and handler function
+6. `manifest.json` - Added content script registration
 
 ## Files Unchanged
 
@@ -273,7 +306,6 @@ cn-me01-hpe04 show router 20463 bgp summary | match "10.124.226.46" context all
 - `acknowledgement/diagnosticParser.js` - Diagnostic parsing
 - `acknowledgement/clipboard.js` - Clipboard utilities
 - `js/background.js` - Service worker
-- `manifest.json` - Extension manifest (no changes needed)
 
 ## API Response Structure
 

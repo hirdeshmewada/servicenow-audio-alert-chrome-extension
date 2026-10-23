@@ -9,12 +9,9 @@
         type: 'SERVICE_STATUS_BRIDGE_READY'
     }, '*');
 
-    // Listen for messages from extension
+    // Listen for messages from content script
     window.addEventListener('message', function(event) {
-        // Only accept messages from extension context
-        if (event.source !== window) return;
-
-        if (event.data.type === 'TRIGGER_FLT') {
+        if (event.data && event.data.type === 'TRIGGER_FLT') {
             console.log('[SERVICE STATUS BRIDGE] Received FLT trigger request');
             console.log('[SERVICE STATUS BRIDGE] Case sys_id:', event.data.sys_id);
 

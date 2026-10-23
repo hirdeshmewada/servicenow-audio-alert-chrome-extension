@@ -139,17 +139,17 @@ ServiceStatus._executeBridgeScript = function (scriptContent) {
 
 ServiceStatus._waitForBridgeReady = function (timeout = 5000) {
     return new Promise((resolve, reject) => {
-        const listener = function(event) {
-            if (event.data && event.data.type === 'SERVICE_STATUS_BRIDGE_READY') {
-                window.removeEventListener('message', listener);
+        const listener = function(request, sender) {
+            if (request && request.type === 'SERVICE_STATUS_BRIDGE_READY') {
+                chrome.runtime.onMessage.removeListener(listener);
                 resolve();
             }
         };
         
-        window.addEventListener('message', listener);
+        chrome.runtime.onMessage.addListener(listener);
         
         setTimeout(() => {
-            window.removeEventListener('message', listener);
+            chrome.runtime.onMessage.removeListener(listener);
             reject(new Error('Bridge script not ready within timeout'));
         }, timeout);
     });
@@ -170,33 +170,33 @@ ServiceStatus.triggerFLT = async function (origin, caseSysId) {
     // Wait for bridge to be ready
     await ServiceStatus._waitForBridgeReady();
     
-    // Send trigger request to bridge
+    // Send trigger request to bridge via content script
     return new Promise((resolve, reject) => {
-        const listener = function(event) {
-            if (event.data && event.data.type === 'FLT_TRIGGER_RESPONSE') {
-                window.removeEventListener('message', listener);
+        const listener = function(request, sender) {
+            if (request && request.type === 'FLT_TRIGGER_RESPONSE') {
+                chrome.runtime.onMessage.removeListener(listener);
                 
-                if (event.data.success) {
-                    console.log('[SERVICE STATUS] FLT trigger successful:', event.data.data);
-                    resolve(event.data.data);
+                if (request.success) {
+                    console.log('[SERVICE STATUS] FLT trigger successful:', request.data);
+                    resolve(request.data);
                 } else {
-                    console.error('[SERVICE STATUS] FLT trigger failed:', event.data.error);
-                    reject(new Error(event.data.error || 'FLT trigger failed'));
+                    console.error('[SERVICE STATUS] FLT trigger failed:', request.error);
+                    reject(new Error(request.error || 'FLT trigger failed'));
                 }
             }
         };
         
-        window.addEventListener('message', listener);
+        chrome.runtime.onMessage.addListener(listener);
         
-        // Send trigger request
-        window.postMessage({
+        // Send trigger request to the content script in the tab
+        chrome.tabs.sendMessage(tab.id, {
             type: 'TRIGGER_FLT',
             sys_id: caseSysId
-        }, '*');
+        });
         
         // Timeout after 30 seconds
         setTimeout(() => {
-            window.removeEventListener('message', listener);
+            chrome.runtime.onMessage.removeListener(listener);
             reject(new Error('FLT trigger timeout'));
         }, 30000);
     });
